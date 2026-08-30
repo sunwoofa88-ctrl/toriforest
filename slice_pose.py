@@ -141,12 +141,22 @@ def cut(src, keys):
                     k+=1.0
                 return None
             A=walk(1.0); Bq=walk(-1.0)
+            # ── 양쪽 색이 다르면(예: 몸통 털 ↔ 크림색 배 경계를 봉이 가로지름) ──
+            #   예전엔 여기서 그냥 포기하고 안 메웠다. 그러면 그 자리가 안 채워진 채
+            #   남아 흰 얼룩(안티앨리어싱 잔여물)이 그대로 보였다(실제로 보였다).
+            #   두 색이 가까우면(매끄러운 명암) 예전처럼 섞고, 색이 갈리면(진짜 경계선을
+            #   봉이 지나감) 섞지 않고 '더 가까운 쪽' 색을 그대로 쓴다 — 섞으면 두 색의
+            #   중간(존재하지 않는 색)이 되어 오히려 더 눈에 띈다. 어느 쪽이든 반드시 채운다.
             if A and Bq:
                 ca=suba[A[0],A[1]].astype(float); cb=suba[Bq[0],Bq[1]].astype(float)
                 if abs(ca[0]-cb[0])<70 and abs(ca[1]-cb[1])<70 and abs(ca[2]-cb[2])<70:
                     w=Bq[2]/float(A[2]+Bq[2])
                     suba[yy,xx]=ca*w+cb*(1-w)
-                    sub[yy,xx]=True
+                else:
+                    suba[yy,xx]= ca if A[2]<=Bq[2] else cb
+                sub[yy,xx]=True
+            # 한쪽만 찾았다(반대쪽은 배경) → 봉이 몸 가장자리를 스쳐 나간 자리다.
+            # 억지로 채우면 실루엣 밖으로 털색이 삐져나온 혹이 생긴다 — 그대로 비워 둔다.
 
         ys2=np.where(sub.any(1))[0]; xs2=np.where(sub.any(0))[0]
         by0,by1,bx0,bx1=ys2[0],ys2[-1],xs2[0],xs2[-1]
