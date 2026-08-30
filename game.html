@@ -16631,13 +16631,19 @@ function drawHero(px,py){
       swing = 0.57 - e1*2.02;
     }
   }
-  /* ★ 순서 : 몸 → 무기 → 손.
-       무기를 몸 뒤에 두면 자루가 다 가려져 '뒤에 떠 있는' 것처럼 보이고,
-       앞에만 두면 손이 자루에 가려진다. 그래서 무기를 앞에 그리고
-       그 위에 주먹을 한 번 더 그려 자루를 감싸게 한다(앞손 레이어). */
-  ctx.drawImage(spr,-sz*sxx*0.5,-sz*syy*BASE_F,sz*sxx,sz*syy);
-  if(P.hurtT>0){ GA(Math.min(1,P.hurtT/0.45)*0.8);
-    ctx.drawImage(SPR.heroF,-sz*sxx*0.5,-sz*syy*BASE_F,sz*sxx,sz*syy); }
+  /* ★ 방향별 그리는 순서 표 (HANDOVER.md 'B. 방향별 그리는 순서 표') :
+       아래(정면)를 볼 땐 무기가 몸 앞, 위(뒷모습)를 볼 땐 무기가 몸 뒤여야
+       자연스럽다 — 뒤로 걸어가면서 칼을 등 뒤로 감추듯. 그래서 몸(_drawBody)과
+       무기(_drawWeapon)를 함수로 나누고, _isBack 여부로 그리는 순서를 뒤집는다.
+       정면(!_isBack) : 몸 → 무기 → 앞손(손이 자루를 감싼다).
+       뒷모습(_isBack) : 무기 → 몸(무기가 몸에 가려 등 뒤에 든 것처럼 보인다).
+       앞손 레이어는 정면 전용 그림이라 뒷모습에서는 원래도 생략된다(아래 !_isBack 조건 유지). */
+  var _drawBody=function(){
+    ctx.drawImage(spr,-sz*sxx*0.5,-sz*syy*BASE_F,sz*sxx,sz*syy);
+    if(P.hurtT>0){ GA(Math.min(1,P.hurtT/0.45)*0.8);
+      ctx.drawImage(SPR.heroF,-sz*sxx*0.5,-sz*syy*BASE_F,sz*sxx,sz*syy); }
+  };
+  var _drawWeapon=function(){
   if(wsp&&!P.dead&&P.inhaleT<=0.15){
     /* 무기 기준 크기 — 실제 화면에서 작아 보여 키웠다(0.46 → 0.60) */
     var WS=sz*0.60*wScale;
@@ -16690,6 +16696,8 @@ function drawHero(px,py){
     if(!_isBack) drawHandOver(ctx, wOffX, wOffY, sz, _wg.nat + _ang,
                  -sz*sxx*0.5, -sz*syy*BASE_F, sz*sxx, sz*syy);
   }
+  };
+  if(_isBack){ _drawWeapon(); _drawBody(); } else { _drawBody(); _drawWeapon(); }
   RS();
   if(P.inhaleT>0.05){
     var rng=(170+S.lv*2.2)*SC, a0=Math.atan2(P.fy,P.fx);

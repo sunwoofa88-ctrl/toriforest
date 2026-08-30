@@ -18,7 +18,8 @@ run "글꼴 오프라인"     node t_font.js
 [ "${1:-all}" = quick ] && exit 0
 run "갤럭시 9기종"      node t_galaxy.js
 TAIL=6 run "몬스터 그림 240"  bash -c 'node tests/t_spec.js >/dev/null 2>&1; python3 audit_mon.py'
-TAIL=8 run "무기 48종 기하 감사" node /tmp/t_audit3.js
+TAIL=8 run "무기 48종 기하 감사(맨몸)" node /tmp/t_audit3.js
+TAIL=10 run "갑옷 6종 × 무기 8종 기하 감사" node /tmp/t_audit_armor.js
 echo
 echo "※ 숫자가 통과해도 반드시 눈으로 본다:"
 echo "   node /tmp/t_hold.js      → /tmp/hold48.png (무기 48종 파지)"
