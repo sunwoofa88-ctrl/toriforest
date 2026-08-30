@@ -2681,16 +2681,6 @@ function chapName(c){ if(TW.on && c===S.chap) return twFloorName(TW.f)+' · '+BI
    일반 몹만 잡는 데 19분이 걸렸다. 상한 60마리를 둬 절반으로 줄인다. */
 function chapKillNeed(c){ if(TW.on && c===S.chap) return twKillNeed(TW.f);
   return Math.min(60, 24 + (c%10)*4 + Math.floor(c/10)*6); }
-/* ★ 방별 누적 목표치 (던파식 3방 구조).
-   기존 pg.kills 증가 코드는 한 곳도 안 건드린다 — '누적 처치 수'를 그대로 쓰고
-   문 열림 기준선만 3개로 나눈다(34%/67%/100%). 그래서 하나 고치다 다른 게 터질 걱정이 없다.
-   room=1→문1, room=2→문2, room=3(=total)→기존 exitGate 와 동일 기준. */
-function chapRoomNeed(c, room){
-  var total=chapKillNeed(c);
-  if(room===1) return Math.max(1, Math.round(total*0.34));
-  if(room===2) return Math.max(2, Math.round(total*0.67));
-  return total;
-}
 function chapMobs(c){
   var bi=chapBiome(c), sub=c%10, list=SPECIES_BY_BIOME[bi];
   var out=[];
@@ -11709,15 +11699,12 @@ function buildWorld(chap){
   clearArea(LM.gate,2.0);
   /* 6. 길 */
   /* 길 : 시작 → 캠프들 → 아레나 → 문 이 항상 이어지도록 (배치가 달라도 보장) */
-  /* ★ 던전 3방 구조 (2026-08 추가) : 우회로를 없애 한 줄로만 잇는다.
-     spawn → 방1(camps[0]) → 문1 → 방2(camps[1]) → 문2 → 방3(camps[2]+arena) → 출구.
-     예전엔 spawn→camps[2], camps[0]→arena 우회 통로가 있어 방 순서를 건너뛸 수 있었다.
-     (근거: applyProgress() 의 문 열림 판정이 '누적 처치 수' 기준이라, 우회로가 있으면
-      방을 안 거치고 다음 방 앞까지 걸어가 버릴 수 있었다 — 코드 읽고 확인한 사실, 추측 아님) */
   strokePath(LM.spawn.tx,LM.spawn.ty, LM.camps[0].tx,LM.camps[0].ty, 1);
   strokePath(LM.camps[0].tx,LM.camps[0].ty, LM.camps[1].tx,LM.camps[1].ty, 1);
   strokePath(LM.camps[1].tx,LM.camps[1].ty, LM.camps[2].tx,LM.camps[2].ty, 1);
+  strokePath(LM.spawn.tx,LM.spawn.ty, LM.camps[2].tx,LM.camps[2].ty, 1);
   strokePath(LM.camps[2].tx,LM.camps[2].ty, LM.arena.tx,LM.arena.ty, 1);
+  strokePath(LM.camps[0].tx,LM.camps[0].ty, LM.arena.tx,LM.arena.ty, 1);
   strokePath(LM.arena.tx,LM.arena.ty, LM.gate.tx,LM.gate.ty, 1);
   /* 길과 랜드마크까지 다 만든 뒤 한 번 더 넓혀서 1칸 길목을 완전히 없앤다 */
   widenAll();
@@ -11732,16 +11719,9 @@ function buildWorld(chap){
     var cp=W2(LM.camps[i]);
     WDx.camps.push({x:cp.x,y:cp.y,r:250,mob:mobs[i%mobs.length],max:7,t:0,alive:0});
   }
-  /* ★ 던전 3방 구조 추가하며 이 함수를 껐다 (2026-08).
-     이유 : updateCamps() 의 방 잠금(gate1/gate2)은 WD.camps[1]/[2] "인덱스"만 막는데,
-     이 함수가 만드는 보너스 캠프 6곳은 맵 3×3 전역에 무작위로 흩어져서 인덱스 3~8 을 차지한다.
-     그 캠프들은 어느 방에도 안 걸려 있어 문이 잠긴 상태에서도 몬스터가 나왔다 —
-     렌더해서 맵을 직접 보고 확인한 실제 버그(추측 아님. WD.camps.length 가 9인 걸 로그로 확인).
-     지금은 "한 화면 자유탐험"이 아니라 "방 3개를 순서대로"이므로,
-     안 연 방에 몬스터가 하나도 없는 게 오히려 맞는 동작이다 → 보너스 캠프 자체를 만들지 않는다.
-     (총 처치 목표는 그대로 24~60마리이고, 방 하나당 최대 7마리가 계속 리스폰하므로
-      부족하지 않다 — chapKillNeed 상한 60 < 방 3개 동시 스폰 상한 21×리스폰 이라 여유 있다) */
-  (function spreadCamps_DISABLED(){ return;
+  /* 랜드마크 캠프 3곳만 두면 몬스터가 구석에만 몰린다.
+     맵을 3×3 구역으로 나눠 비어 있는 구역마다 캠프를 더 놓아 고르게 퍼뜨린다. */
+  (function spreadCamps(){
     var want=9, tries=0;
     var regions=[];
     for(var ry=0;ry<3;ry++) for(var rx=0;rx<3;rx++) regions.push([rx,ry]);
@@ -11874,19 +11854,6 @@ function buildWorld(chap){
   WDx.exitGate={x:WDx.gatePos.x,y:WDx.gatePos.y,open:false};
   place('gate', WDx.exitGate.x, WDx.exitGate.y);
   WDx.exitGateProp=WDx.props.length-1;
-
-  /* ★ 방 사이 문 2개 (던파식 3방 구조) : 방1→방2, 방2→방3(아레나) 경계.
-     기존 exitGate/arenaGate 와 완전히 같은 방식(원형 solid 판정, GATE_R)을 재사용한다 —
-     이미 200장에서 검증된 방식이라 새 충돌 로직을 만들지 않는다. */
-  function midTile(a,b){ return {tx:(a.tx+b.tx)/2, ty:(a.ty+b.ty)/2}; }
-  var g1t=midTile(LM.camps[0], LM.camps[1]);
-  var g2t=midTile(LM.camps[1], LM.camps[2]);
-  WDx.gate1={x:(g1t.tx+0.5)*TS, y:(g1t.ty+0.5)*TS, open:false};
-  WDx.gate2={x:(g2t.tx+0.5)*TS, y:(g2t.ty+0.5)*TS, open:false};
-  place('gate', WDx.gate1.x, WDx.gate1.y);
-  WDx.gate1Prop=WDx.props.length-1;
-  place('gate', WDx.gate2.x, WDx.gate2.y);
-  WDx.gate2Prop=WDx.props.length-1;
   /* 큰 세트피스는 길에서 멀리 비켜 놓는다 (길을 가리면 안 된다) */
   if(chapIsBoss(chap)) placeIfFree('landmark', ax+300, ay-300);   /* 대장 보스 장에만 대형 세트피스 */
   /* 성역 장식 : 보스 장에서만 성대하게, 평범한 장에서는 소박한 쉼터로 */
@@ -12104,14 +12071,6 @@ function applyProgress(){
   if(!needAny && quota && !pg.boss) pg.boss=1;
   eg.k = open2?'gateOpen':'gate'; eg.solid = open2?0:1; eg.r = open2?0:GATE_R;
   WD.exitGate.open=open2;
-  /* ★ 방1→방2, 방2→방3 문 (던파식 3방 구조) — 위 arenaGate/exitGate 와 완전히 같은 패턴 */
-  var g1=WD.props[WD.gate1Prop], g2=WD.props[WD.gate2Prop];
-  var openG1 = pg.kills>=chapRoomNeed(S.chap,1);
-  var openG2 = pg.kills>=chapRoomNeed(S.chap,2);
-  g1.k = openG1?'gateOpen':'gate'; g1.solid = openG1?0:1; g1.r = openG1?0:GATE_R;
-  WD.gate1.open=openG1;
-  g2.k = openG2?'gateOpen':'gate'; g2.solid = openG2?0:1; g2.r = openG2?0:GATE_R;
-  WD.gate2.open=openG2;
   for(var i=0;i<WD.chests.length;i++){
     if(pg.chests && pg.chests[i]){
       WD.chests[i].opened=true;
@@ -12395,8 +12354,7 @@ function connectWorld(){
   var sx=Math.floor(WD.spawn.x/TS), sy=Math.floor(WD.spawn.y/TS), i, carved=0;
   /* 스폰 칸 자체가 막혔으면 먼저 뚫는다 */
   if(!walkTile(sx,sy)){ WD.tiles[sy*COLS+sx]=T_GRASS; }
-  var goals=[[WD.arena.x,WD.arena.y],[WD.exitGate.x,WD.exitGate.y],[WD.arenaGate.x,WD.arenaGate.y],
-             [WD.gate1.x,WD.gate1.y],[WD.gate2.x,WD.gate2.y]];
+  var goals=[[WD.arena.x,WD.arena.y],[WD.exitGate.x,WD.exitGate.y],[WD.arenaGate.x,WD.arenaGate.y]];
   for(i=0;i<WD.camps.length;i++) goals.push([WD.camps[i].x,WD.camps[i].y]);
   for(i=0;i<WD.chests.length;i++) goals.push([WD.chests[i].x,WD.chests[i].y]);
   var seen=floodFrom(sx,sy), guard=0;
@@ -13423,21 +13381,9 @@ var W_HOLD = -2.05;
    무기를 새로 넣으면 좌표가 저절로 나온다. 220종이든 1000종이든 손볼 게 없다.
    사람이 정하는 건 '이 무기가 어느 계열인가' 한 단어뿐이다. */
 var WEP_AUTO={"eq_amul": {"gx": 0.4934, "gy": 0.2923, "ang": 1.5714, "len": 0.8543, "wid": 0.6875, "slim": 1.243, "frac": 0.263}, "eq_armor": {"gx": 0.4904, "gy": 0.4765, "ang": -1.433, "len": 0.8535, "wid": 0.8865, "slim": 0.963, "frac": null}, "eq_axe": {"gx": 0.3782, "gy": 0.596, "ang": -0.7729, "len": 1.0369, "wid": 0.5721, "slim": 1.812, "frac": 0.409}, "eq_beads": {"gx": 0.4964, "gy": 0.4552, "ang": 2.2678, "len": 0.8619, "wid": 0.7613, "slim": 1.132, "frac": null}, "eq_bell": {"gx": 0.6038, "gy": 0.2912, "ang": 1.7739, "len": 0.857, "wid": 0.5139, "slim": 1.668, "frac": 0.263}, "eq_boomer": {"gx": 0.1917, "gy": 0.6038, "ang": -0.813, "len": 1.2047, "wid": 0.4749, "slim": 2.537, "frac": 0.263}, "eq_boots": {"gx": 0.5394, "gy": 0.5243, "ang": 2.2763, "len": 1.0116, "wid": 0.9354, "slim": 1.081, "frac": null}, "eq_bow": {"gx": 0.3522, "gy": 0.7308, "ang": -0.8568, "len": 1.1758, "wid": 0.4171, "slim": 2.819, "frac": 0.263}, "eq_broom": {"gx": 0.4233, "gy": 0.5776, "ang": -0.8257, "len": 1.2206, "wid": 0.353, "slim": 3.458, "frac": 0.409}, "eq_brush": {"gx": 0.6588, "gy": 0.3348, "ang": 2.3345, "len": 1.1656, "wid": 0.4097, "slim": 2.845, "frac": 0.263}, "eq_cannon": {"gx": 0.4487, "gy": 0.4711, "ang": 2.5705, "len": 1.0058, "wid": 0.5474, "slim": 1.837, "frac": null}, "eq_cap": {"gx": 0.5238, "gy": 0.5252, "ang": 2.8098, "len": 0.9335, "wid": 0.5255, "slim": 1.776, "frac": null}, "eq_cape": {"gx": 0.4971, "gy": 0.2554, "ang": 1.5696, "len": 0.9118, "wid": 0.8907, "slim": 1.024, "frac": 0.263}, "eq_cball": {"gx": 0.4225, "gy": 0.7565, "ang": -1.2221, "len": 0.9794, "wid": 0.8539, "slim": 1.147, "frac": 0.263}, "eq_charm": {"gx": 0.5084, "gy": 0.5664, "ang": 1.6889, "len": 0.8685, "wid": 0.5694, "slim": 1.525, "frac": null}, "eq_claw": {"gx": 0.4495, "gy": 0.5346, "ang": -0.8772, "len": 1.0529, "wid": 0.4715, "slim": 2.233, "frac": null}, "eq_club": {"gx": 0.4091, "gy": 0.5802, "ang": -0.7716, "len": 1.1634, "wid": 0.3574, "slim": 3.255, "frac": 0.409}, "eq_crown": {"gx": 0.4987, "gy": 0.626, "ang": 0.0021, "len": 0.8907, "wid": 0.7137, "slim": 1.248, "frac": null}, "eq_dagger": {"gx": 0.3502, "gy": 0.7398, "ang": -0.823, "len": 1.1798, "wid": 0.3694, "slim": 3.194, "frac": 0.263}, "eq_drum": {"gx": 0.7179, "gy": 0.552, "ang": -2.7632, "len": 0.9556, "wid": 0.8144, "slim": 1.173, "frac": 0.263}, "eq_fan": {"gx": 0.4946, "gy": 0.4728, "ang": -3.1391, "len": 0.8542, "wid": 0.5678, "slim": 1.504, "frac": null}, "eq_fishrod": {"gx": 0.4458, "gy": 0.6032, "ang": -0.7898, "len": 1.2046, "wid": 0.4892, "slim": 2.462, "frac": 0.409}, "eq_flute": {"gx": 0.3053, "gy": 0.6938, "ang": -0.7797, "len": 1.1822, "wid": 0.2547, "slim": 4.642, "frac": 0.263}, "eq_glaive": {"gx": 0.6925, "gy": 0.3116, "ang": 2.2406, "len": 1.1494, "wid": 0.3188, "slim": 3.606, "frac": 0.263}, "eq_glove": {"gx": 0.4973, "gy": 0.5355, "ang": -3.1416, "len": 0.8906, "wid": 0.7969, "slim": 1.118, "frac": null}, "eq_great": {"gx": 0.3114, "gy": 0.6919, "ang": -0.7812, "len": 1.1895, "wid": 0.3648, "slim": 3.261, "frac": 0.263}, "eq_halberd": {"gx": 0.4379, "gy": 0.5843, "ang": -0.7951, "len": 1.1792, "wid": 0.4348, "slim": 2.712, "frac": 0.409}, "eq_hammer": {"gx": 0.2878, "gy": 0.713, "ang": -0.8747, "len": 1.0217, "wid": 0.6729, "slim": 1.518, "frac": 0.263}, "eq_harp": {"gx": 0.4758, "gy": 0.491, "ang": -1.5889, "len": 0.9142, "wid": 0.6586, "slim": 1.388, "frac": null}, "eq_helm": {"gx": 0.4943, "gy": 0.4255, "ang": 3.1396, "len": 0.8961, "wid": 0.6932, "slim": 1.293, "frac": null}, "eq_hood": {"gx": 0.5578, "gy": 0.4457, "ang": 1.1282, "len": 0.8307, "wid": 0.9243, "slim": 0.899, "frac": null}, "eq_horn": {"gx": 0.4953, "gy": 0.4346, "ang": -3.1384, "len": 0.896, "wid": 0.705, "slim": 1.271, "frac": null}, "eq_katana": {"gx": 0.3297, "gy": 0.708, "ang": -0.7924, "len": 1.168, "wid": 0.2579, "slim": 4.529, "frac": 0.263}, "eq_kite": {"gx": 0.5484, "gy": 0.4758, "ang": -1.0079, "len": 1.0677, "wid": 0.6726, "slim": 1.587, "frac": null}, "eq_kusari": {"gx": 0.532, "gy": 0.2827, "ang": 1.6282, "len": 0.9249, "wid": 0.8297, "slim": 1.115, "frac": 0.263}, "eq_ladle": {"gx": 0.5921, "gy": 0.4046, "ang": 2.32, "len": 1.1529, "wid": 0.3895, "slim": 2.96, "frac": 0.409}, "eq_lantern": {"gx": 0.5014, "gy": 0.5246, "ang": 1.6441, "len": 0.8882, "wid": 0.5439, "slim": 1.633, "frac": null}, "eq_mace": {"gx": 0.4284, "gy": 0.5728, "ang": -0.816, "len": 1.2018, "wid": 0.3541, "slim": 3.394, "frac": 0.409}, "eq_mask": {"gx": 0.4937, "gy": 0.48, "ang": -3.1412, "len": 0.8542, "wid": 0.4169, "slim": 2.049, "frac": null}, "eq_medal": {"gx": 0.4946, "gy": 0.6973, "ang": -1.5692, "len": 0.8548, "wid": 0.5261, "slim": 1.625, "frac": 0.263}, "eq_orb": {"gx": 0.4976, "gy": 0.4726, "ang": 1.5706, "len": 0.8542, "wid": 0.6407, "slim": 1.333, "frac": null}, "eq_pend": {"gx": 0.5039, "gy": 0.2891, "ang": 1.5872, "len": 0.859, "wid": 0.6199, "slim": 1.386, "frac": 0.263}, "eq_ring": {"gx": 0.4971, "gy": 0.4602, "ang": 1.5901, "len": 0.9183, "wid": 0.7204, "slim": 1.275, "frac": null}, "eq_rune": {"gx": 0.4916, "gy": 0.6997, "ang": -1.5389, "len": 0.8584, "wid": 0.6796, "slim": 1.263, "frac": 0.263}, "eq_sawsw": {"gx": 0.3274, "gy": 0.7111, "ang": -0.8355, "len": 1.1121, "wid": 0.3217, "slim": 3.457, "frac": 0.263}, "eq_scythe": {"gx": 0.3652, "gy": 0.6093, "ang": -0.8264, "len": 1.0398, "wid": 0.5931, "slim": 1.753, "frac": 0.409}, "eq_shield": {"gx": 0.5826, "gy": 0.4104, "ang": 2.313, "len": 1.1991, "wid": 0.4508, "slim": 2.66, "frac": 0.409}, "eq_shuri": {"gx": 0.4597, "gy": 0.7403, "ang": -1.4062, "len": 1.0391, "wid": 1.0014, "slim": 1.038, "frac": 0.263}, "eq_sling": {"gx": 0.2998, "gy": 0.7356, "ang": -0.8085, "len": 0.9999, "wid": 0.7516, "slim": 1.33, "frac": 0.263}, "eq_spear": {"gx": 0.4221, "gy": 0.5692, "ang": -0.7519, "len": 1.205, "wid": 0.152, "slim": 7.926, "frac": 0.409}, "eq_staff": {"gx": 0.3997, "gy": 0.5729, "ang": -0.8317, "len": 1.151, "wid": 0.5087, "slim": 2.263, "frac": 0.409}, "eq_starst": {"gx": 0.4006, "gy": 0.5815, "ang": -0.819, "len": 1.1836, "wid": 0.4543, "slim": 2.605, "frac": 0.409}, "eq_sword_fire": {"gx": 0.3119, "gy": 0.6883, "ang": -0.8644, "len": 1.1778, "wid": 0.4779, "slim": 2.465, "frac": 0.263}, "eq_sword_gold": {"gx": 0.6801, "gy": 0.2632, "ang": 2.3008, "len": 1.2206, "wid": 0.4088, "slim": 2.986, "frac": 0.263}, "eq_sword_ice": {"gx": 0.3601, "gy": 0.7178, "ang": -0.9235, "len": 1.126, "wid": 0.4454, "slim": 2.528, "frac": 0.263}, "eq_sword_wood": {"gx": 0.5134, "gy": 0.4996, "ang": -0.8768, "len": 1.2403, "wid": 0.5355, "slim": 2.316, "frac": null}, "eq_tome": {"gx": 0.4945, "gy": 0.5148, "ang": 3.0685, "len": 0.8393, "wid": 0.5419, "slim": 1.549, "frac": null}, "eq_topspin": {"gx": 0.5868, "gy": 0.2934, "ang": 2.0017, "len": 0.9923, "wid": 0.7293, "slim": 1.361, "frac": 0.263}, "eq_trident": {"gx": 0.4132, "gy": 0.5877, "ang": -0.8481, "len": 1.1592, "wid": 0.3993, "slim": 2.903, "frac": 0.409}, "eq_trumpet": {"gx": 0.6801, "gy": 0.368, "ang": 2.2546, "len": 1.1195, "wid": 0.4691, "slim": 2.386, "frac": 0.263}, "eq_twin": {"gx": 0.5004, "gy": 0.5268, "ang": -0.6641, "len": 1.0859, "wid": 1.0878, "slim": 0.998, "frac": null}, "eq_umbrella": {"gx": 0.5534, "gy": 0.4449, "ang": -0.6263, "len": 1.1432, "wid": 0.9493, "slim": 1.204, "frac": null}, "eq_wand": {"gx": 0.6326, "gy": 0.313, "ang": 2.286, "len": 1.1039, "wid": 0.4098, "slim": 2.694, "frac": 0.263}, "eq_warfan": {"gx": 0.275, "gy": 0.7196, "ang": -0.8313, "len": 1.1311, "wid": 0.3639, "slim": 3.108, "frac": 0.263}, "eq_whip": {"gx": 0.3397, "gy": 0.3859, "ang": 0.3306, "len": 0.906, "wid": 0.9064, "slim": 1.0, "frac": 0.263}, "eq_xbow": {"gx": 0.4259, "gy": 0.5539, "ang": -0.85, "len": 1.1627, "wid": 0.7741, "slim": 1.502, "frac": 0.409}, "eq_yoyo": {"gx": 0.4675, "gy": 0.2844, "ang": 1.5035, "len": 0.9164, "wid": 0.5713, "slim": 1.604, "frac": 0.263}};
-/* ★ 2026-08 : pole 계열(13종)이 실제로는 성격이 다른 두 무리였다 — t_audit3 감사에서
-   얼굴·몸통 겹침으로 걸린 18종 중 13종이 옛 pole 계열에 몰려 있었다(창·낫·지팡이·룬석장·
-   미늘창·삼지창·사슬낫·빗자루·낚싯대·별지팡이·우산 등). 원인을 보니 하나의 자세 규칙 안에
-   '찌르는 장병기(창 계열, 양손으로 앞을 겨눔)'와 '세워 드는 지팡이류(한손 위주, 수직에 가까움)'
-   가 같이 들어 있었다 — 무기 그림 문제가 아니라 계열 분류 자체의 문제였다(추측 아님, 감사
-   로그로 확인). 그래서 계열을 8개로 나눈다 — 예전 조사(던전앤파이터-방식-조사.md)의
-   '계열은 3~4개로 줄이는 게 안전'이라는 권고는 알고 있지만, 이미 7개로 시작한 상태에서
-   1개를 더 정확히 나누는 쪽이 13종을 억지로 한 규칙에 맞추는 것보다 낫다고 판단했다.
-   ⚠ 아래 staff 규칙의 수치는 pole 규칙에서 손높이만 조정한 '임시값'이다.
-   실제 자세 그림(원리④, 마젠타 봉 자세 시트)이 나오기 전까지는 근본 해결이 아니라는
-   점을 분명히 한다 — 그림 없이 숫자만으로는 장병기가 얼굴을 지나가는 문제를 완전히
-   없앨 수 없다. */
-var WEP_CLASS={"dagger": "small", "shuri": "small", "claw": "small", "wand": "small", "boomer": "small", "sword": "blade", "katana": "blade", "twin": "blade", "sawsw": "blade", "shield": "blade", "great": "heavy", "glaive": "pole", "scythe": "pole", "hammer": "blunt", "club": "blunt", "mace": "blunt", "axe": "blunt", "ladle": "blunt", "spear": "pole", "halberd": "pole", "trident": "pole", "kusari": "pole", "staff": "staff", "rune": "staff", "starst": "staff", "broom": "staff", "fishrod": "staff", "brush": "staff", "bow": "bow", "xbow": "bow", "sling": "bow", "orb": "item", "cball": "item", "tome": "item", "topspin": "item", "drum": "item", "harp": "item", "fan": "item", "warfan": "item", "kite": "item", "bell": "item", "lantern": "item", "yoyo": "item", "umbrella": "staff", "cannon": "blunt", "trumpet": "blunt", "flute": "small", "whip": "small"};
+var WEP_CLASS={"dagger": "small", "shuri": "small", "claw": "small", "wand": "small", "boomer": "small", "sword": "blade", "katana": "blade", "twin": "blade", "sawsw": "blade", "shield": "blade", "great": "heavy", "glaive": "pole", "scythe": "pole", "hammer": "blunt", "club": "blunt", "mace": "blunt", "axe": "blunt", "ladle": "blunt", "spear": "pole", "halberd": "pole", "trident": "pole", "kusari": "pole", "staff": "pole", "rune": "pole", "starst": "pole", "broom": "pole", "fishrod": "pole", "brush": "pole", "bow": "bow", "xbow": "bow", "sling": "bow", "orb": "item", "cball": "item", "tome": "item", "topspin": "item", "drum": "item", "harp": "item", "fan": "item", "warfan": "item", "kite": "item", "bell": "item", "lantern": "item", "yoyo": "item", "umbrella": "pole", "cannon": "blunt", "trumpet": "blunt", "flute": "small", "whip": "small"};
 /* 계열 → [기울기(수직 기준 라디안), 크기배수, 손높이] */
-var WEP_RULE={"small": [-0.3, 0.78, 0], "blade": [-0.52, 1.05, 0], "heavy": [-0.62, 1.42, 0], "blunt": [-0.42, 1.12, 0], "pole": [0.0, 1.55, 1], "staff": [-0.18, 1.30, 0.55], "bow": [-0.12, 1.22, 1], "item": [0.0, 0.95, 1]};
+var WEP_RULE={"small": [-0.3, 0.78, 0], "blade": [-0.52, 1.05, 0], "heavy": [-0.62, 1.42, 0], "blunt": [-0.42, 1.12, 0], "pole": [0.0, 1.55, 1], "bow": [-0.12, 1.22, 1], "item": [0.0, 0.95, 1]};
 var POSE_ANG=-1.5708;   /* 주인공 그림의 자루 방향 : 수직(위) */
 var W_TYPE_HOLD = {
   /* [크기배수, 각도보정(rad), 손높이, 자루 잡는 위치(0=자루끝 ~ 1=반대끝)]
@@ -15087,10 +15033,6 @@ function updateCamps(dt){
   var pg=prog();
   for(var i=0;i<WD.camps.length;i++){
     var c=WD.camps[i];
-    /* ★ 방2(camps[1])는 문1이, 방3(camps[2])는 문2가 열리기 전엔 몬스터가 나오지 않는다.
-       (던파식 3방 구조 — 방을 다 깨기 전엔 다음 방이 비어 있어야 '방 순서'가 의미 있다) */
-    if(i===1 && !WD.gate1.open) continue;
-    if(i===2 && !WD.gate2.open) continue;
     var dx=c.x-P.x, dy=c.y-P.y;
     if(dx*dx+dy*dy > 1000*1000) continue;
     if(c.alive>=c.max) continue;
@@ -15194,18 +15136,9 @@ function updateInteract(dt){
   /* 잠긴 문에 부딪히면 왜 못 가는지 바로 알려 준다 (막연히 끼인 느낌 방지) */
   gateHintT-=dt;
   if(gateHintT<=0){
-    var locked=null, need=0, lockedRoom=0;
+    var locked=null, need=0;
     var pgB=pg;
-    /* ★ 방1→방2, 방2→방3 문을 먼저 검사한다(공간상 exitGate 보다 앞쪽에 있으므로) */
-    if(!WD.gate1.open){
-      var gx1=WD.gate1.x-P.x, gy1=WD.gate1.y-P.y;
-      if(gx1*gx1+gy1*gy1 < 150*150){ locked=WD.gate1; lockedRoom=1; }
-    }
-    if(!locked && !WD.gate2.open){
-      var gx2=WD.gate2.x-P.x, gy2=WD.gate2.y-P.y;
-      if(gx2*gx2+gy2*gy2 < 150*150){ locked=WD.gate2; lockedRoom=2; }
-    }
-    if(!locked && !WD.exitGate.open){
+    if(!WD.exitGate.open){
       var ex=WD.exitGate.x-P.x, ey=WD.exitGate.y-P.y;
       if(ex*ex+ey*ey < 150*150) locked=WD.exitGate;
     }
@@ -15222,9 +15155,7 @@ function updateInteract(dt){
       }
     }
     if(locked){
-      /* ★ 방1/방2 문은 그 방 목표치로, 그 외(출구·성역 문)는 장 전체 목표치로 계산한다 */
-      var lockedNeed = lockedRoom? chapRoomNeed(S.chap,lockedRoom) : chapKillNeed(S.chap);
-      need=lockedNeed-(pg.kills|0);
+      need=chapKillNeed(S.chap)-(pg.kills|0);
       var msg = need>0 ? '이 문은 <b>몬스터 '+need+'마리</b>를 더 물리쳐야 열려요!'
               : (!pg.boss && chapIsAnyBoss(S.chap)
                  ? '<b>'+(chapIsMid(S.chap)?'중간 보스':'보스')+'</b>를 물리치면 이 문이 열려요!' : '');
@@ -16608,21 +16539,12 @@ function objTarget(){
   /* 살아 있는 몬스터가 하나도 없으면 가장 가까운 캠프로 보낸다.
      (캠프는 아직 안 가 본 곳도 alive=0 이므로 '비었다'고 걸러내면 안 된다 —
       플레이어가 다가가면 그때부터 몬스터가 나온다) */
-  /* ★ 문이 아직 안 열린 방(camps[1]/camps[2])은 몬스터가 안 나오므로 후보에서 뺀다.
-     안 그러면 '가장 가까운 캠프'가 잠긴 방을 가리켜서 따라가도 텅 비어 있는,
-     바로 위 주석이 경계하는 그 문제가 새 문 2개에서 다시 생긴다. */
   var best=null,bd=1e9;
   for(i=0;i<WD.camps.length;i++){
-    if(i===1 && !WD.gate1.open) continue;
-    if(i===2 && !WD.gate2.open) continue;
     var c=WD.camps[i], dx=c.x-P.x, dy=c.y-P.y, d=dx*dx+dy*dy;
     if(d<bd){bd=d;best=c;}
   }
-  if(best) return {x:best.x,y:best.y,label:'몬스터'};
-  /* 지금 방의 몬스터를 다 잡았는데 아직 문이 안 열렸다면(스폰 딜레이 등) 그 문을 가리킨다 */
-  if(!WD.gate1.open) return {x:WD.gate1.x,y:WD.gate1.y,label:'문'};
-  if(!WD.gate2.open) return {x:WD.gate2.x,y:WD.gate2.y,label:'문'};
-  return null;
+  return best? {x:best.x,y:best.y,label:'몬스터'} : null;
 }
 function drawObjective(){
   var t=objTarget(); if(!t) return;
@@ -17179,11 +17101,7 @@ function objectiveText(){
     return (TW.f+1)+'층으로!';
   }
   if(any && pg.boss) return last? '모두 클리어! 🎉' : '다음 단계로!';
-  /* ★ 던파식 3방 구조 : 지금 있는 방 번호와 그 방의 목표치를 보여준다.
-     문이 둘 다 열리면 예전과 똑같이 '장 전체 목표'만 남는다(방3=chapKillNeed 이므로 자연히 일치) */
-  if(!WD.gate1.open) return '방 1 · 몬스터 '+pg.kills+' / '+chapRoomNeed(S.chap,1);
-  if(!WD.gate2.open) return '방 2 · 몬스터 '+pg.kills+' / '+chapRoomNeed(S.chap,2);
-  if(pg.kills<need) return '방 3 · 몬스터 '+pg.kills+' / '+need;
+  if(pg.kills<need) return '몬스터 '+pg.kills+' / '+need;
   if(any) return chapIsMid(S.chap)? '중간 보스를 찾아라!' : '보스를 찾아라!';
   return last? '모두 클리어! 🎉' : '다음 단계로!';
 }
@@ -19337,21 +19255,6 @@ function renderMap(){
         var bk2=chapIsMid(S.chap)? chapMid(S.chap) : chapBoss(S.chap);
         iconPin(WD.arena.x*sxr, WD.arena.y*syr, bk2?mobIcon(bk2):null, '#C79BFF', 1.32, !pgN.boss, null, 'star');
       }
-      /* ★ 방1→방2, 방2→방3 문 — exitGate 와 같은 그림·같은 규칙(잠김 표시 포함)으로 표시 */
-      iconPin(WD.gate1.x*sxr, WD.gate1.y*syr,
-              propImg(WD.gate1.open?'gateOpen':'gate',0),
-              WD.gate1.open? '#8FE3FF':'#B9C2BC', 1.0, WD.gate1.open, null, 'gate');
-      iconPin(WD.gate2.x*sxr, WD.gate2.y*syr,
-              propImg(WD.gate2.open?'gateOpen':'gate',0),
-              WD.gate2.open? '#8FE3FF':'#B9C2BC', 1.0, WD.gate2.open, null, 'gate');
-      if(!WD.gate1.open || !WD.gate2.open){
-        g.save(); g.globalAlpha=0.9;
-        g.font='800 '+Math.round(11*K)+'px Jua, sans-serif';
-        g.textAlign='center'; g.fillStyle='#2C2119';
-        if(!WD.gate1.open) g.fillText('잠김', WD.gate1.x*sxr, WD.gate1.y*syr+18*K);
-        if(!WD.gate2.open) g.fillText('잠김', WD.gate2.x*sxr, WD.gate2.y*syr+18*K);
-        g.restore();
-      }
       /* 다음 장 문 — 실제 문 그림 */
       iconPin(WD.exitGate.x*sxr, WD.exitGate.y*syr,
               propImg(WD.exitGate.open?'gateOpen':'gate',0),
@@ -20612,10 +20515,6 @@ window.__TORI = { onBack:function(){ try{ return onBackKey(); }catch(e){ return 
       chapters:CHAPTERS, biomes:BIOME.length, kinds:Object.keys(ks).length,
       abilForms:ABIL_IDS.length*3, props:PROP_KINDS.length}; },
   get WD(){return WD;}, get cam(){return cam;},
-  /* ★ 검증용(t_room3.js) — 던전 3방 구조 테스트가 클로저 내부 함수를 불러야 해서 추가 */
-  chapRoomNeed:chapRoomNeed, applyProgress:applyProgress,
-  updateCamps:updateCamps, objTarget:objTarget, walkTile:walkTile, clearEntities:clearEntities,
-  get TS(){return TS;}, get COLS(){return COLS;}, get ROWS(){return ROWS;},
   get ready(){ return bootReady; }, get quality(){ return QUALITY; }, get dpr(){ return DPR; } };
 })();
 </script>
