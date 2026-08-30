@@ -13470,12 +13470,29 @@ function wepTypeHold(id){
   var T2=WEP_TYPE[E2.tn]; if(!T2) return null;
   return W_TYPE_HOLD[T2.id] || null;
 }
+/* ★ 2026-08-31 발견 : heroArmorCls() 6종 중 dark/royal/scale 세 벌만 '주먹을 든'
+   그림 자체가 다른 3벌(light/plate/mage)보다 훨씬 높게(뺨~어깨 높이) 그려져 있다
+   (HERO_GRIP 실측값 hy 비교: light/plate/mage ≈ -0.46~-0.47, dark/royal/scale ≈ -0.51
+   ~-0.52 — art/heroW_dark.webp 등을 직접 열어 확인함, 데이터 오타가 아니라 그림 자체가
+   그렇게 그려져 있다). 무기 계열별 각도·길이 규칙(WEP_RULE)은 낮은 손 위치를 기준으로
+   맞춰져 있어서, 이 세 벌을 입으면 같은 규칙을 그대로 적용해도 무기 끝이 얼굴을
+   가로지른다(실측: 검 기준 얼굴 겹침 0%→23%대로 폭증, tests/t_audit_armor.js 로 검증
+   가능 — 기존 t_audit3.js 는 맨몸 기준으로만 재서 이 문제를 전혀 못 잡고 있었다).
+   회전(각도)만 보정해서는 무기별로 필요한 보정 방향이 달라 해결이 안 됐다(스윕 실험
+   결과 평균 개선 미미). 대신 손 위치(hx/hy, 즉 실제 그려진 주먹 자리)는 그대로 두고
+   —이걸 건드리면 drawHandOver() 의 손 겹쳐그리기 사각형(fx0~fy1)과 어긋난다—
+   이 세 벌에서만 무기 길이(크기)를 줄여 손 위쪽으로 뻗는 길이를 짧게 한다.
+   0.42배로 잡으면 대표 8종 무기 평균 얼굴 겹침이 0%대로 떨어진다(스윕 실측).
+   임시방편이다 — 근본 해결은 이 세 벌의 손 위치를 낮게 다시 그리는 것이고,
+   그러면 이 보정표는 지워도 된다. */
+var ARM_REACH_ADJ = {dark:0.42, royal:0.42, scale:0.42};
 function wepGrip(id){
   var E=EQUIP[id], k=E? eqArtKey(E) : null;
   var T=E? WEP_TYPE[E.tn] : null;
   var cls = (T && WEP_CLASS[T.id]) || 'blade';
   var R = WEP_RULE[cls] || WEP_RULE.blade;
   var A = k? WEP_AUTO[k] : null;
+  var armMul = ARM_REACH_ADJ[heroArmorCls()] || 1;
   /* 자세 그림을 쓰는 중이면(HERO_ART_KEY) 그 그림이 이미 '팔을 뻗은' 각도를
      정해 뒀다(HERO_POSE[...].ang) — POSE_ANG+계열기울기 계산을 건너뛰고 그 각도로
      직접 맞춘다. 자세 그림이 없는 프레임(HERO_POSE_PK='')은 기존 계산 그대로. */
@@ -13484,10 +13501,10 @@ function wepGrip(id){
     /* 붙이는 일은 두 좌표계를 겹치는 것뿐이다 :
          그림이 알려 준 자루 방향(A.ang)  →  자세가 요구하는 방향(POSE_ANG + 계열 기울기) */
     var tgt = (poseAng!==null)? poseAng : (POSE_ANG + R[0]);
-    return { x:A.gx, y:A.gy, rot:(tgt - A.ang), s:R[1], hy:R[2], nat:A.ang };
+    return { x:A.gx, y:A.gy, rot:(tgt - A.ang), s:R[1]*armMul, hy:R[2], nat:A.ang };
   }
   /* 그림이 없는 절차적 무기 — 예전 경로 */
-  if(!k || !W_GRIP[k]) return { x:0.50, y:0.95, rot:(W_HOLD + 1.5708), s:0.68, nat:0 };
+  if(!k || !W_GRIP[k]) return { x:0.50, y:0.95, rot:(W_HOLD + 1.5708), s:0.68*armMul, nat:0 };
   var t=W_GRIP[k];
   var th=wepTypeHold(id);
   var tgt2 = (poseAng!==null)? poseAng : (t[3] + (th? th[1] : 0));
@@ -13495,7 +13512,7 @@ function wepGrip(id){
   var gx = t[0] + Math.cos(t[2]) * gf * 1.15;
   var gy = t[1] + Math.sin(t[2]) * gf * 1.15;
   return { x:(15+gx*90)/120, y:(20+gy*90)/120,
-           rot:(tgt2 - t[2]), s:(th? th[0] : 1), hy:(th? th[2] : 0), nat:t[2] };
+           rot:(tgt2 - t[2]), s:(th? th[0] : 1)*armMul, hy:(th? th[2] : 0), nat:t[2] };
 }
 /* ★ 주인공 그림을 '무기 쥐는 자세'(오른팔을 들어 팔꿈치를 굽히고 빈 주먹을 가슴 앞에)로
      다시 그렸다. 레퍼런스 6장이 전부 그 자세였고, 팔이 옆구리에 붙은 그림에는
