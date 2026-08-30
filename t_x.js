@@ -1,0 +1,21 @@
+const {chromium}=require('playwright');
+(async()=>{
+const b=await chromium.launch();
+const p=await b.newPage({viewport:{width:412,height:846},deviceScaleFactor:2,isMobile:true,hasTouch:true});
+const e=[];p.on('pageerror',x=>{const m=x.message; if(e.indexOf(m)<0)e.push(m)});
+await p.goto('file:///root/toriforest/dotorisup.html');
+await p.waitForFunction('window.__TORI&&window.__TORI.ready===true',{timeout:90000});
+await p.evaluate(()=>window.__TORI.beginPlay());
+await p.waitForTimeout(2400);
+await p.evaluate(()=>{document.getElementById('banner').innerHTML='';document.getElementById('toasts').innerHTML='';
+  var m=document.getElementById('moveHint'); if(m)m.classList.add('gone');});
+await p.screenshot({path:'X_spawn.png'});
+const full=await p.evaluate(()=>{const T=window.__TORI,WD=T.WD;
+  const c=document.createElement('canvas');c.width=WD.ground.width;c.height=WD.ground.height;
+  c.getContext('2d').drawImage(WD.ground,0,0);return c.toDataURL('image/png');});
+require('fs').writeFileSync('X_world.png',Buffer.from(full.split(',')[1],'base64'));
+await p.evaluate(()=>{const T=window.__TORI,c=T.WD.camps[0];T.P.x=c.x-140;T.P.y=c.y-40;});
+await p.waitForTimeout(2800);
+await p.screenshot({path:'X_camp.png'});
+console.log(e.length?e.join('|'):'에러 없음');
+await b.close();})();
