@@ -13476,17 +13476,21 @@ function wepGrip(id){
   var cls = (T && WEP_CLASS[T.id]) || 'blade';
   var R = WEP_RULE[cls] || WEP_RULE.blade;
   var A = k? WEP_AUTO[k] : null;
+  /* 자세 그림을 쓰는 중이면(HERO_ART_KEY) 그 그림이 이미 '팔을 뻗은' 각도를
+     정해 뒀다(HERO_POSE[...].ang) — POSE_ANG+계열기울기 계산을 건너뛰고 그 각도로
+     직접 맞춘다. 자세 그림이 없는 프레임(HERO_POSE_PK='')은 기존 계산 그대로. */
+  var poseAng = (HERO_POSE_PK && HERO_POSE[HERO_ART_KEY])? HERO_POSE[HERO_ART_KEY].ang : null;
   if(A){
     /* 붙이는 일은 두 좌표계를 겹치는 것뿐이다 :
          그림이 알려 준 자루 방향(A.ang)  →  자세가 요구하는 방향(POSE_ANG + 계열 기울기) */
-    var tgt = POSE_ANG + R[0];
+    var tgt = (poseAng!==null)? poseAng : (POSE_ANG + R[0]);
     return { x:A.gx, y:A.gy, rot:(tgt - A.ang), s:R[1], hy:R[2], nat:A.ang };
   }
   /* 그림이 없는 절차적 무기 — 예전 경로 */
   if(!k || !W_GRIP[k]) return { x:0.50, y:0.95, rot:(W_HOLD + 1.5708), s:0.68, nat:0 };
   var t=W_GRIP[k];
   var th=wepTypeHold(id);
-  var tgt2 = t[3] + (th? th[1] : 0);
+  var tgt2 = (poseAng!==null)? poseAng : (t[3] + (th? th[1] : 0));
   var gf = th? (th[3]||0) : 0;
   var gx = t[0] + Math.cos(t[2]) * gf * 1.15;
   var gy = t[1] + Math.sin(t[2]) * gf * 1.15;
@@ -13523,8 +13527,65 @@ var HERO_FIST={
   heroW_scale :[-0.2969,-0.5115,0.1039]
 };
 var HERO_FIST_DEF=[-0.3594,-0.3526,0.1750];
-/* 현재 그리는 주인공 그림 이름 — heroHand() 가 이걸 보고 표를 고른다 */
-var HERO_ART_KEY='hero_idle';
+/* ══ 무기 계열별 '자세' 그림 (2026-08-30 세션) ═══════════════════════
+   원리 ④(무기 계열이 자세를 고른다)의 실제 구현. 지금까지는 갑옷 그림 하나에
+   숫자(WEP_RULE: 기울기·크기·손높이)만 바꿔 씌웠는데, 장병기류는 그래도
+   주먹이 뺨 옆에 붙어 있어 자루가 얼굴을 가로질렀다(감사기가 지적한 문제).
+   여기서는 계열별로 '팔을 몸 밖으로 뻗은' 별도 그림(hero_pose_<계열>[_move|_atk])을
+   슬라이서(slice_pose.py)로 만들어 붙인다. 아직 맨몸 전용(갑옷 낀 상태는 기존
+   HERO_GRIP 방식 그대로 — poseKeyFor() 가 갑옷 있으면 null 을 돌려준다).
+   HERO_ART_KEY 가 채워져 있으면 '이번 프레임은 자세 그림을 쓴다'는 뜻이고,
+   heroFist()/drawHandOver()/wepGrip() 이 전부 이걸 먼저 확인한다.
+
+   ⚠ 2026-08-30 배선 직후 t_audit3(감사 v3, idle 상태로 고정해 재검증)로 실측한 결과
+   — pole 계열 6종(창·낫·미늘창·삼지창·언월도·사슬낫) 전부 '숫자 전용 방식(WEP_RULE)'
+   보다 얼굴 겹침이 늘었다(예: 창 2.7%→47.1%, 언월도는 원래 0%(깨끗)였는데 20.7%로
+   악화). 원인을 실제 그림에서 직접 확인함 — art/hero_pose_pole.webp 를 열어 보면 든
+   손이 '몸 밖으로 뻗은' 게 아니라 뺨 옆(hy=-0.53, 어깨보다 높음)에 그대로 붙어 있다.
+   봉 각도(ang=-0.47rad≈-27°, 대각선)까지 더해져 오히려 옛 pole 규칙(WEP_RULE.pole[0]=0,
+   거의 수직으로 세운 자세)보다 얼굴을 더 많이 가로지른다. 배선 코드(wepGrip/heroFist/
+   drawHandOver/drawHero/poseKeyFor/heroPoseSpr)는 전부 만들어 두고 검증도 끝났지만,
+   '자세 그림 자체'가 목적을 달성 못 해 계열을 비워 껐다(WEP_POSE_CLASS={}) — 이러면
+   poseKeyFor()가 전부 null을 돌려줘 예전 HERO_GRIP/WEP_RULE 경로 그대로 동작한다
+   (회귀 0건, t_regress 25/25·t_room3 81/81·t_audit3 결과 이 세션 시작 시점과 동일).
+   다음 세션이 손볼 것 — 시트를 다시 생성할 때 반드시:
+     ① 쥐는 손을 뺨이 아니라 가슴~허리 높이까지 확실히 내려 뻗는다(hy 가 최소
+        -0.30 이하로 내려가야 얼굴 상자(FY0=8%~FY1=46%) 밖으로 나간다)
+     ② 봉 각도를 대각선이 아니라 거의 수직(옛 pole 규칙처럼)으로 세운다 —
+        대각선일수록 반대쪽 어깨~얼굴을 가로지를 확률이 커진다
+     ③ 재생성 뒤에는 tests/t_audit3.js 를 반드시 다시 돌려(EN.length=0으로 자동전투를
+        막아 idle 고정한 상태) 얼굴/몸통 %가 옛 숫자 전용 방식보다 실제로 낮아졌는지
+        먼저 수치로 확인하고, 그 다음 스크린샷으로 눈으로도 확인한다 — 둘 다 통과해야
+        WEP_POSE_CLASS={pole:'pole'} 로 되돌려 켠다. */
+var WEP_POSE_CLASS={};
+var HERO_POSE={"hero_pose_pole": {"hx": 0.1178, "hy": -0.5322, "d": 0.0398, "ang": -0.4743, "fx0": 0.5859, "fx1": 0.6497, "fy0": 0.3692, "fy1": 0.433}, "hero_pose_pole_move": {"hx": 0.132, "hy": -0.5322, "d": 0.0398, "ang": -0.4744, "fx0": 0.6001, "fx1": 0.6639, "fy0": 0.3692, "fy1": 0.433}, "hero_pose_pole_atk": {"hx": -0.6172, "hy": -0.2752, "d": 0.0575, "ang": -0.3425, "fx0": -0.1632, "fx1": -0.0712, "fy0": 0.6122, "fy1": 0.7042}};
+var HERO_POSE_PK='', HERO_POSE_ST='';
+/* 현재 그리는 주인공 그림 이름. 비어 있으면(=기본값) 자세 그림 미사용,
+   'hero_pose_xxx' 형태면 HERO_POSE[이 값] 을 쓴다. */
+var HERO_ART_KEY='';
+/* 장착 무기 id → 자세 계열 키('pole' 등) 또는 null.
+   갑옷을 낀 상태는 아직 자세 그림이 없으므로(맨몸만 제작됨) null 을 돌려줘
+   기존 HERO_GRIP(갑옷별 단일 파지점) 경로를 그대로 쓰게 한다. */
+function poseKeyFor(wid){
+  if(heroArmorCls()) return null;
+  var E=EQUIP[wid]; if(!E) return null;
+  var T=WEP_TYPE[E.tn]; if(!T) return null;
+  var cls=WEP_CLASS[T.id];
+  return WEP_POSE_CLASS[cls] || null;
+}
+/* 계열별 자세 스프라이트(맨몸, idle/move/atk) — 처음 쓸 때 한 번만 굽는다 */
+function heroPoseSpr(pk){
+  SPR.heroPose = SPR.heroPose || {};
+  if(SPR.heroPose[pk]) return SPR.heroPose[pk];
+  var o={};
+  ['idle','move','atk'].forEach(function(st){
+    var fname = 'hero_pose_'+pk+(st==='idle'? '' : ('_'+st));
+    var _hi=artOf(fname);
+    o[st]= _hi? heroGeared(artCanvas(_hi, Math.min(HERO_PX,_hi.naturalWidth)), null) : null;
+  });
+  SPR.heroPose[pk]=o;
+  return o;
+}
 /* == 손 그림(AI) ==============================================
    Spine 의 hand_front 슬롯에 해당한다. 마젠타 봉을 기준자로 쓰고
    그 봉을 지우면 손가락이 자루를 감싸는 모양이 '그림으로' 남는다.
@@ -13633,6 +13694,13 @@ function heroArmorCls(){
     그려져 있다. 고정된 주먹에 무기를 갖다 붙인 건 하나도 없었다.) */
 var HERO_GRIP={"heroW_light": {"hx": -0.2633, "hy": -0.4692, "d": 0.1215, "fx0": 0.1771, "fx1": 0.3362, "fy0": 0.3625, "fy1": 0.5658}, "heroW_plate": {"hx": -0.2633, "hy": -0.4692, "d": 0.1215, "fx0": 0.1771, "fx1": 0.3362, "fy0": 0.3625, "fy1": 0.5658}, "heroW_mage": {"hx": -0.2642, "hy": -0.4681, "d": 0.1218, "fx0": 0.1771, "fx1": 0.3343, "fy0": 0.3634, "fy1": 0.5672}, "heroW_dark": {"hx": -0.1824, "hy": -0.5145, "d": 0.0976, "fx0": 0.246, "fx1": 0.3956, "fy0": 0.3386, "fy1": 0.4991}, "heroW_royal": {"hx": -0.1835, "hy": -0.5145, "d": 0.1019, "fx0": 0.2417, "fx1": 0.3999, "fy0": 0.3343, "fy1": 0.5034}, "heroW_scale": {"hx": -0.1824, "hy": -0.5156, "d": 0.0997, "fx0": 0.2439, "fx1": 0.3978, "fy0": 0.3343, "fy1": 0.5012}, "bare": {"hx": -0.26, "hy": -0.2563, "d": 0.1258}};
 function heroFist(){
+  /* 자세 그림을 쓰는 프레임이면 그 그림 고유의 쥐는점을 바로 돌려준다 —
+     이 그림은 팔이 몸 밖으로 뻗어 있어 상태(idle/move/atk)마다 좌표가
+     크게 다르다(HERO_GRIP처럼 하나로 재사용 불가). */
+  if(HERO_ART_KEY && HERO_POSE[HERO_ART_KEY]){
+    var hp=HERO_POSE[HERO_ART_KEY];
+    return [hp.hx, hp.hy, hp.d];
+  }
   var cls=heroArmorCls();
   var g = cls? HERO_GRIP['heroW_'+cls] : HERO_GRIP.bare;
   if(g) return [g.hx, g.hy, g.d];
@@ -13693,6 +13761,23 @@ function heroElemCol(){
    사각형은 '손가락이 봉을 가린 세로 구간'과 '주먹 높이'로 그림에서 직접 쟀다.
    가로를 그보다 넓히면 꼬리까지 다시 그려져 무기를 가린다(실제로 가렸다). */
 function drawHandOver(g2, x, y, sz, ang, hx0, hy0, sw, sh){
+  /* 자세 그림 프레임 — 그 자세 그림 자체의 주먹 사각형(hp.fx0~fy1)으로 다시 그린다.
+     몸(spr)이 이미 heroPoseSpr(...)의 해당 상태 그림이므로 여기서도 같은 그림(psSpr)을
+     써야 손과 몸이 어긋나지 않는다. */
+  if(HERO_POSE_PK && HERO_POSE[HERO_ART_KEY]){
+    var hp=HERO_POSE[HERO_ART_KEY];
+    var _ps=heroPoseSpr(HERO_POSE_PK);
+    var psSpr=_ps[HERO_POSE_ST]||_ps.idle;
+    if(hp.fx0!==undefined && psSpr && hx0!==undefined){
+      var W3=(sw!==undefined? sw: sz), H3=(sh!==undefined? sh: sz);
+      g2.save(); g2.beginPath();
+      g2.rect(hx0+W3*hp.fx0, hy0+H3*hp.fy0, W3*(hp.fx1-hp.fx0), H3*(hp.fy1-hp.fy0));
+      g2.clip();
+      g2.drawImage(psSpr, hx0, hy0, W3, H3);
+      g2.restore();
+      return;
+    }
+  }
   var cls=heroArmorCls();
   var G=cls? HERO_GRIP['heroW_'+cls] : HERO_GRIP.bare;
   var sp=(SPR.hero&&SPR.hero.idle)? SPR.hero.idle : null;
@@ -16444,6 +16529,21 @@ function drawHero(px,py){
     var _bs=heroBackSprite();
     if(_bs){ spr=_bs; _isBack=1; }
   }
+  /* 자세 그림(장병기 등 계열 전용 '팔을 몸 밖으로 뻗은' 자세) 적용 여부.
+     뒷모습(_isBack)일 때는 자세 그림이 없다(정면 맨몸만 제작됨) — 그대로 켜면
+     HERO_POSE의 정면 좌표계가 뒷모습 실루엣과 어긋나 무기가 엉뚱한 자리에 붙는다.
+     그래서 뒷모습·사망 상태에서는 자세를 끄고 기존 HERO_GRIP 경로로 되돌아간다. */
+  var _pk=(!_isBack && !P.dead)? ((S.eqW && EQUIP[S.eqW] && eqOwned(S.eqW))? poseKeyFor(S.eqW) : null) : null;
+  if(_pk){
+    HERO_POSE_PK=_pk;
+    HERO_POSE_ST=(st==='atk')?'atk':(st==='move')?'move':'idle';
+    HERO_ART_KEY='hero_pose_'+_pk+(HERO_POSE_ST==='idle'?'':'_'+HERO_POSE_ST);
+    var _ps=heroPoseSpr(_pk);
+    var _psSpr=(HERO_POSE_ST==='atk'?_ps.atk:(HERO_POSE_ST==='move'?_ps.move:_ps.idle))||_ps.idle;
+    if(_psSpr) spr=_psSpr;
+  } else {
+    HERO_POSE_PK=''; HERO_POSE_ST=''; HERO_ART_KEY='';
+  }
   var _hs=ANIM.hitS||0;                                  /* Ori 타격 스트레치 (누적 안 됨) */
   var sz=P.size, sq=P.squash,
       _pf=(POUCH.n/POUCH_MAX)*0.10 + POUCH.puff*0.06,   /* 볼이 부푼 만큼 살짝 커진다 */
@@ -17403,6 +17503,10 @@ function heroDollCanvas(){
      ★ 무기가 캔버스 밖으로 나가 잘리던 문제가 있었다(대검·활처럼 긴 무기).
        그래서 넉넉한 캔버스에 먼저 그린 뒤, 실제로 그려진 영역을 재서
        출력 캔버스 안에 통째로 맞춰 넣는다 — 어떤 무기를 껴도 잘리지 않는다. */
+  /* ★ 이 화면은 항상 SPR.hero.idle(기본 정지 그림) 한 장만 쓴다 — 자세 그림 상태가
+     직전 실제 게임 프레임에서 켜진 채로 남아 있으면(HERO_ART_KEY 등 전역값) 몸은 idle인데
+     손·무기만 자세 그림 좌표로 어긋나 그려진다. 매번 기본 HERO_GRIP 경로로 강제 리셋한다. */
+  HERO_POSE_PK=''; HERO_POSE_ST=''; HERO_ART_KEY='';
   var OUT=224, BIG=Math.round(OUT*1.7);
   var sz=176, ox=BIG*0.5, oy=BIG*0.5 + sz*0.30;
   var big=nc(BIG,BIG), g=big.getContext('2d');
@@ -20477,6 +20581,8 @@ window.__TORI = { onBack:function(){ try{ return onBackKey(); }catch(e){ return 
         artKey:function(id){ var E=EQUIP[id]; return E? (eqArtKey(E)||'none') : '?'; },
         hold:function(){ var h=heroHand(); return {W_HOLD:W_HOLD, HAND_X:h[0], HAND_Y:h[1]}; },
         wgrip:function(id){ return wepGrip(id); },
+        poseKey:function(){ return HERO_POSE_PK; },
+        poseSpr:function(pk,st){ var o=heroPoseSpr(pk); return (o&&o[st])? o[st] : null; },
         eqW:function(id){ return eqSprWorld(id); },
         moveSpd:function(){ return 370*SC*(1+petBonus().moveSpd+eqB().moveSpd); },
         atkBuf:function(){return atkBuf;}, atkInfo:function(){return {cd:atkCD,held:atkHeld,buf:atkBuf,bufT:atkBufT};},
