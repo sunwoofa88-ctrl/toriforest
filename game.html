@@ -1870,6 +1870,7 @@ body.titleon .hud-row2{ opacity:0; pointer-events:none; }
         <button class="mbtn" id="btnMake" aria-label="만들기"><svg><use href="#i-fuse"/></svg><span>만들기</span><span class="dot hidden" id="dotFuse"></span></button>
         <button class="mbtn" id="btnBook" aria-label="도감"><svg><use href="#i-book"/></svg><span>도감</span></button>
         <button class="mbtn" id="btnMap" aria-label="지도"><svg><use href="#i-map"/></svg><span>지도</span></button>
+        <button class="mbtn" id="btnVillage" aria-label="쉼터"><span style="font-size:calc(21px*var(--u));line-height:1;display:block">🛖</span><span>쉼터</span></button>
       </div>
     </div>
   </div>
@@ -13812,7 +13813,7 @@ function heroElemCol(){
    아니라 그 자리만 다시 그리면 된다 — 화풍·색·크기가 태생부터 맞는다.
    사각형은 '손가락이 봉을 가린 세로 구간'과 '주먹 높이'로 그림에서 직접 쟀다.
    가로를 그보다 넓히면 꼬리까지 다시 그려져 무기를 가린다(실제로 가렸다). */
-function drawHandOver(g2, x, y, sz, ang, hx0, hy0, sw, sh){
+function drawHandOver(g2, x, y, sz, ang, hx0, hy0, sw, sh, wsc){
   /* 자세 그림 프레임 — 그 자세 그림 자체의 주먹 사각형(hp.fx0~fy1)으로 다시 그린다.
      몸(spr)이 이미 heroPoseSpr(...)의 해당 상태 그림이므로 여기서도 같은 그림(psSpr)을
      써야 손과 몸이 어긋나지 않는다. */
@@ -13850,8 +13851,14 @@ function drawHandOver(g2, x, y, sz, ang, hx0, hy0, sw, sh){
   im=handTinted(im, heroElemCol(), key);
   var F=heroFist();
   /* 손 그림은 '자루를 감싼 손가락'만 남겼다(손바닥·손목은 잘라 냈다 — 그게 가슴을
-     덮는 크림색 덩어리의 정체였다). 세로 길이를 실측 주먹 지름에 맞춘다. */
-  var hh = sz * F[2] * HAND_K;
+     덮는 크림색 덩어리의 정체였다). 세로 길이를 실측 주먹 지름에 맞춘다.
+     ★ 2026-08-31 — 사용자 실측 제보("주먹이랑 검 맞닿는 부분 오류") : 검류 공격 중
+     무기 그림만 _swAtk(1.55배)로 커지는데 이 손 그림은 그대로라, 커진 자루 굵기와
+     손가락 크기가 안 맞아 손과 칼자루 사이에 틈/어긋남이 생겼다(실측 스크린샷
+     /tmp/frozen2_*_hilt.png 로 확인). 손도 같은 배율(wsc)만큼 같이 키워서
+     자루 굵기와 손 크기가 항상 맞도록 한다. */
+  var _hwsc=wsc||1;
+  var hh = sz * F[2] * HAND_K * _hwsc;
   var ww = hh * m.ar;
   /* 자루가 지나가는 선(m.gx)이 주먹 중심에 오도록 놓는다 */
   g2.save(); g2.translate(x,y); g2.rotate(ang + 1.5708);
@@ -16802,7 +16809,15 @@ function drawHero(px,py){
        안 바뀐다. 추측이 아니라 스크린샷으로 실측 확인 후 넣은 값이다. */
     var _wtid=(_wid && EQUIP[_wid])? EQUIP[_wid].tn : -1;
     var _wtype=(_wtid>=0 && WEP_TYPE[_wtid])? WEP_TYPE[_wtid].id : '';
-    var _swAtk=(kk9>=0 && kk9<1 && (_wtype==='sword'||_wtype==='katana'))? 1.55 : 1;
+    /* ★ 2026-08-31 재수정 — 사용자 실측 제보("주먹이 커서 칼날까지 닿는다")로 1.55배는
+       과했다는 게 확인됨. 픽셀 실측(/tmp/t_measure_grip2.js) 결과 : 이 무기 원화(132×132)
+       자체가 '자루' 구간이 피벗에서 native 9px 밖에 안 되고 그 다음은 바로 날(불꽃)
+       색상으로 넘어간다 — 즉 손이 잡을 수 있는 자루 길이가 원화 자체에 거의 없다.
+       손 그림을 따로 키우는 건(전 수정) 오히려 손가락이 날 쪽으로 더 파고들어 보여
+       악화시켰다 — 되돌린다(아래 drawHandOver 호출에서 배율 인자 제거).
+       배율을 1.55 → 1.2 로 낮춰 '해상도상 안 보이던 스윙'과 '손-자루 비율 어긋남'
+       사이 절충 — 근본 해결(자루가 긴 검 원화로 재생성)은 다음 세션 과제로 남긴다. */
+    var _swAtk=(kk9>=0 && kk9<1 && (_wtype==='sword'||_wtype==='katana'))? 1.2 : 1;
     var _ws=WS*(_wg.s||1)*_swAtk;
     var _ang=swing+_wg.rot, _L=_ws*(_wg.y||0.8);
     /* ══ 무기 궤적(트레일) + 잔상(스미어) ═══════════════════════════════
@@ -17783,7 +17798,8 @@ var SHEETS={
   pet:  {title:'펫',        tabs:['내 펫','펫 뽑기','펫 조합']},
   make: {title:'만들기',    tabs:['재료 합치기','능력 진화','능력 세게']},
   book: {title:'도감',      tabs:['몬스터','재료','능력','수첩']},
-  map:  {title:'모험 지도', tabs:['숲 지도','별빛의 탑']}
+  map:  {title:'모험 지도', tabs:['숲 지도','별빛의 탑']},
+  village: {title:'오두막 쉼터', tabs:null}
 };
 function renderMake(){
   if(curTab===0) renderFuseMat();
@@ -17810,7 +17826,7 @@ function renderSheet(){
   var gb=$('btnReset');
   if(gb) gb.classList.toggle('hidden', !(curSheet==='map' && curTab===0));
   sheetBody.innerHTML='';
-  ({bag:renderBag,gear:renderGear,pet:renderPet,make:renderMake,book:renderBook,map:renderMap})[curSheet]();
+  ({bag:renderBag,gear:renderGear,pet:renderPet,make:renderMake,book:renderBook,map:renderMap,village:renderVillage})[curSheet]();
   /* 내용 높이가 줄었을 수 있으므로 범위 안으로 잘라 넣는다 */
   var maxTo=Math.max(0, sheetBody.scrollHeight - sheetBody.clientHeight);
   sheetBody.scrollTop = Math.min(keepTo, maxTo);
@@ -19411,6 +19427,79 @@ function twRungCol(f){
   if(f>50)     return '#B9A6FF';      /* 51층 상층부 : 던파 절망의 탑이 51층에서 배경을 바꾼다 */
   return '#8FE3FF';
 }
+/* ── 오두막 쉼터 : 마을 허브. 던전 입구 / 무한의 탑(별빛의 탑) 이동, 침대에서 휴식. ─────
+   2026-08-31 신규. 별도 씬(카메라·이동)을 새로 만들 시간이 없어 기존 시트(오버레이) 시스템을
+   재사용했다. 탑 UI는 이미 완성돼 있는 renderTower()를 그대로 연결한다(중복 구현 안 함). */
+function renderVillage(){
+  var wrap=el('div');
+  wrap.style.cssText='border-radius:18px;overflow:hidden;border:3px solid var(--ink);'+
+    'background:linear-gradient(180deg,#4A3222 0%,#5C4229 55%,#6B4E30 100%);margin:2px 0 12px';
+
+  var scene=el('div');
+  scene.style.cssText='position:relative;height:190px;overflow:hidden;'+
+    'background:repeating-linear-gradient(90deg,#7A5A38 0 26px,#6E5031 26px 28px)';
+  scene.innerHTML =
+    /* 창문 - 별밤 */
+    '<div style="position:absolute;top:14px;left:50%;transform:translateX(-50%);width:70px;height:70px;border-radius:50%;'+
+      'background:radial-gradient(circle at 35% 30%,#3B4E8C,#1A1F3D 70%);border:6px solid #4A3222;box-shadow:0 0 0 3px #2C2119">'+
+      '<span style="position:absolute;top:12px;left:14px;font-size:11px">✨</span>'+
+      '<span style="position:absolute;top:34px;left:44px;font-size:9px">✨</span>'+
+      '<span style="position:absolute;top:22px;left:38px;font-size:15px">🌙</span>'+
+    '</div>'+
+    /* 벽난로 - 오른쪽 */
+    '<div id="vFire" style="position:absolute;right:14px;bottom:0;width:78px;height:110px;cursor:pointer">'+
+      '<div style="position:absolute;bottom:0;width:78px;height:88px;border-radius:10px 10px 0 0;'+
+        'background:linear-gradient(180deg,#9A9184,#807869);border:3px solid var(--ink)"></div>'+
+      '<div style="position:absolute;bottom:6px;left:10px;width:58px;height:46px;border-radius:6px;background:#241611"></div>'+
+      '<div style="position:absolute;bottom:8px;left:20px;font-size:30px;filter:drop-shadow(0 0 10px #FF8A2A)">🔥</div>'+
+    '</div>'+
+    /* 침대 - 왼쪽 */
+    '<div id="vBed" style="position:absolute;left:16px;bottom:10px;width:96px;height:56px;cursor:pointer">'+
+      '<div style="position:absolute;bottom:0;width:96px;height:14px;background:#6B4423;border-radius:0 0 6px 6px;border:3px solid var(--ink);border-top:none"></div>'+
+      '<div style="position:absolute;bottom:12px;width:96px;height:34px;border-radius:8px;border:3px solid var(--ink);'+
+        'background:repeating-linear-gradient(45deg,#E8664F 0 8px,#F4EFE3 8px 16px)"></div>'+
+      '<div style="position:absolute;bottom:34px;left:2px;width:26px;height:20px;border-radius:6px;background:#FFFDF6;border:2px solid var(--ink)"></div>'+
+    '</div>'+
+    /* 바닥 러그 */
+    '<div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:110px;height:16px;border-radius:50%;'+
+      'background:#C4573F;opacity:.55"></div>';
+  wrap.appendChild(scene);
+
+  var cap=el('div');
+  cap.style.cssText='padding:10px 14px 12px;color:#FFF3E0;font-size:14px;text-align:center;'+
+    'background:linear-gradient(180deg,#6B4E30,#5C4229)';
+  cap.innerHTML='🍂 어서 와요, 아늑한 나만의 쉼터예요. 여기서 숨 돌리고 다시 나가 봐요!';
+  wrap.appendChild(cap);
+  sheetBody.appendChild(wrap);
+
+  scene.querySelector('#vBed').addEventListener('click',function(){
+    var mh=maxHp();
+    if(HP>=mh){ toast('이미 체력이 가득해요 🌙'); return; }
+    HP=mh; needSync=1; SFX.coin();
+    toast('폭신한 이불 속에서 포근하게 쉬었어요! 체력이 가득 찼어요 💤');
+    syncHUD();
+  });
+  scene.querySelector('#vFire').addEventListener('click',function(){
+    SFX.coin(); toast('벽난로가 타닥타닥, 마음까지 따뜻해져요 🔥');
+  });
+
+  var goDun=el('button','bigbtn','🌲  던전 입구로 가기');
+  goDun.addEventListener('click',function(){ SFX.coin(); openSheet('map',0); });
+  sheetBody.appendChild(goDun);
+
+  var goTw=el('button','bigbtn','🌌  무한의 탑 도전하기');
+  goTw.style.cssText='background:linear-gradient(180deg,#9B7BFF,#6B45D9);color:#fff;border-color:#4B2E9E';
+  goTw.addEventListener('click',function(){ SFX.coin(); openSheet('map',1); });
+  sheetBody.appendChild(goTw);
+
+  var info=el('div','info');
+  info.innerHTML='<b>쉼터</b>는 언제든 올 수 있는 나만의 공간이에요.<br>'+
+    '· <b>침대</b>를 톡 누르면 체력이 가득 차요<br>'+
+    '· <b>벽난로</b> 옆에서 잠깐 쉬어 가요<br>'+
+    '· 아래 버튼으로 <b>던전</b>이나 <b>별빛의 탑</b>으로 바로 이동할 수 있어요';
+  sheetBody.appendChild(info);
+}
+
 function renderTower(){
   var t=twState(), best=t.best|0, deep=t.deep|0;
   if(!twUnlocked()){
@@ -19871,6 +19960,7 @@ $('btnPet').addEventListener('click',function(){ openSheet('pet', gachaLeft()>0?
 $('btnMake').addEventListener('click',function(){ openSheet('make',0); });
 $('btnBook').addEventListener('click',function(){ openSheet('book',0); });
 $('btnMap').addEventListener('click',function(){ openSheet('map',0); });
+$('btnVillage').addEventListener('click',function(){ openSheet('village',0); });
 
 /* ============================================================================
    부팅
@@ -20699,7 +20789,7 @@ $('btnFull').addEventListener('pointerup',function(){ try{ this.blur(); }catch(e
       메뉴/소리/전체화면/종료 버튼에 터치 경로를 하나 더 달아 둔다(중복은 시간으로 막는다). ── */
 (function(){
   var last={};
-  ['btnBag','btnGear','btnPet','btnMake','btnBook','btnMap','btnSound','btnFull','btnExit','btnReset']
+  ['btnBag','btnGear','btnPet','btnMake','btnBook','btnMap','btnVillage','btnSound','btnFull','btnExit','btnReset']
   .forEach(function(id){
     var el=document.getElementById(id); if(!el) return;
     el.addEventListener('touchend',function(e){
