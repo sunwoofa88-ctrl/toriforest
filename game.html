@@ -16994,8 +16994,25 @@ function drawHero(px,py){
     ctx.drawImage(wsp,-_ws*_wg.x,-_ws*_wg.y,_ws,_ws); ctx.restore();
     GA(1);
     /* ★ 앞손 : 무기 위에 '봉을 쥔 손' AI 그림을 얹는다.
-       무기(뒤) → 손(앞) 순서라 손가락이 자루를 감싼다. Spine 의 hand_front 슬롯. */
-    if(!_isBack) drawHandOver(ctx, wOffX, wOffY, sz, _wg.nat + _ang,
+       무기(뒤) → 손(앞) 순서라 손가락이 자루를 감싼다. Spine 의 hand_front 슬롯.
+       ★ 2026-08-31 재수정 — 사용자 제보("무기 휘두를때 손 그립이 저렇게까지
+       돌아가는게 맞냐?", "인체해부학적인 메커니즘이 전혀 고려 안 된 것 같다")로
+       실측(kk9 0~1 스크럽 렌더 비교, /tmp/swing_zoom2_sheet.png) 해보니, 지금까지는
+       무기와 손 그림을 똑같은 각도(swing 전량)로 같이 돌리고 있었다 — 가로베기 한
+       번에 무기가 약 116°(2.02rad)를 도는데, 손목 하나가 그만큼 그 자리에서
+       팽이처럼 도는 건 실제로는 불가능하다(웹 검색 확인 — mocaponline.com 'Sword
+       Melee Animation Guide': 큰 스윙의 힘과 궤적 대부분은 손목이 아니라 몸통·어깨
+       회전에서 나온다). 그래서 무기(_ang, 시각적 궤적 담당)는 그대로 두고, 손
+       그림만 그 각도 변화량(swing)의 40%만 따라가게 감쇠한다 — 이러면 주먹이
+       칼자루를 쥔 자연스러운 모양을 스윙 내내 유지한다(0.4 후보로 실측 확인:
+       1.0은 여전히 손이 뒤틀려 보이고, 0.25 이하는 반대로 무기가 손에서
+       분리돼 보임 — 0.4가 절충점). 단, 회전 스킬(castS===1, 주먹을 축으로
+       360° 도는 연출)은 예외 — 그 스킬은 손도 무기와 함께 완전히 도는 게
+       의도된 연출이라(실측 비교: 감쇠하면 오히려 검이 손에서 빠져나가
+       따로 도는 것처럼 보임/tmp/dsk_sheet.png) 감쇠하지 않는다. */
+    var HAND_SWING_DAMP = 0.4;
+    var _handAng = (P.castS===1)? (_wg.nat + _ang) : (_wg.nat + _wg.rot + swing*HAND_SWING_DAMP);
+    if(!_isBack) drawHandOver(ctx, wOffX, wOffY, sz, _handAng,
                  -sz*sxx*0.5, -sz*syy*BASE_F, sz*sxx, sz*syy);
   }
   };
