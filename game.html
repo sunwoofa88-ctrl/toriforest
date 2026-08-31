@@ -2582,6 +2582,12 @@ function buildAbils(){
       var KD={melee:1.00,spin:0.86,orbit:0.55,laser:1.90,chain:0.78,proj:1.00,beam:0.30,nova:1.35,lob:1.50,trap:0.90,summon:1.70};
       var KH={melee:1.6,spin:1.4,orbit:5.0,laser:2.2,chain:3.0,proj:1.0,beam:1.0,nova:3.2,lob:2.4,trap:4.0,summon:8.0};
       var kRng=KR[kind]*(1+a*0.06), kCd=KC[kind]*(a===2?1.12:(a===1?1.0:0.96)), kArc=A.arc;
+      /* 검(arche 0, blade) 계열은 근접 무기다 — kind 로테이션에 laser(760)/chain(300)/spin(330)이
+         섞여 있어서, 검을 들고도 화면을 가로지르는 광선/사슬처럼 닿는 원소가 있었다(사용자 제보:
+         "칼 공격은 너무 멀리까지 닿으면 이상하다"). 무기 종류(sword 등)와 무관하게 kind 만으로
+         사거리가 정해지던 게 원인 — 검 아키타입만 사거리 상한을 둔다. 던파 웨펀마스터/버서커처럼
+         짧고 강한 근접 타격감을 유지하되, 원소별 kind 다양성(연출 차이)은 그대로 둔다. */
+      if(a===0) kRng=Math.min(kRng,210);
       var archeF=(a===0?1.00:(a===1?0.94:1.12));
       var targetDps=(26+idx*7.2)*archeF;
       var baseDmg = targetDps*kCd/KH[kind];

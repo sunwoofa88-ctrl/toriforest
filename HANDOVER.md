@@ -586,3 +586,106 @@ if(headEq0 && (cls0? (armEn0===headEn0) : (headEn0===0))){
   시간만 9시간 안팎 예상 — 여러 세션에 걸쳐 진행될 대규모 작업임을 사장님도 인지.
 - `zoom` 컴퓨터 액션 사용 자제(13-1 참고, 탭 뷰포트 축소 버그).
 - `HEAD_LAYER_BARE`/`hwbare_*` 죽은 코드 정리(미착수, 낮은 우선순위, 세션 3부터 이월).
+
+# 14. 2026-08-31 (세션 6) 작업 요약
+
+## 14-1. pumpkin(호박불) · light(햇살) · ice(서리) 3개 원소 콤보 그림 108/108 완성
+
+사용자 지시("pumpkin, light, ice 만 먼저 해라. 그러고나서 1차 완성본 줘")에 따라
+세 원소 각각 갑옷 6계열 × 투구 6종 = 36장씩, 총 108장을 fire 원소와 동일한 파이프라인
+(Gemini 생성 → `javascript_tool` blob 다운로드 → `device_stage_files` → `Read` 툴로
+실측 검증 → `slice_combo.py` 슬라이스 → `art/`·`srcart/` 반영)으로 완성했다.
+
+- `art/hero_<class>_<head>_pumpkin.webp` 36/36
+- `art/hero_<class>_<head>_light.webp` 36/36 (⚠ "light" 갑옷 계열과 이름이 겹치는
+  "light" **원소** — 혼동 주의, 13-5절에서 이미 지적된 사항)
+- `art/hero_<class>_<head>_ice.webp` 36/36
+
+**세션 시작 시점 확인 결과, 요약이 말한 "18/36 완료(plate/mage/scale)"가 실제로는
+부정확했다** — 실측(`ls`+per-class 카운트)해보니 plate 5/6(mask 누락), scale 4/6
+(mask·crownh 누락)이었다. 원인: 이미지는 생성·다운로드·`Read` 검증까지 끝났는데 마지막
+`cp`+`slice_combo.py` 반영 단계를 건너뛴 경우(plate+mask — PC Downloads에 파일은
+남아 있어 재슬라이스만으로 복구)와, 이미지 자체가 아예 생성되지 않은 경우(scale+crownh —
+새로 생성)가 섞여 있었다. **교훈: "생성했다"는 요약 문구를 믿지 말고 항상
+`ls art/hero_*_<elem>.webp | wc -l` 실측으로 재확인할 것** (절대규칙 5번과 같은 원칙).
+
+royal+cap(ice)은 세션 재개 시점에 "정정 프롬프트를 보냈고 스크린샷상 성공한 것처럼
+보이나 다운로드·검증·반영 전" 상태였다 — 이어서 다운로드→실측 검증(케이프가 뚜렷하게
+보이고 매끈한 판금 갑옷인지 확인)→반영까지 마무리했다.
+
+royal+crownh(ice)에서 재발한 드리프트: 크라운 교체 요청 시 갑옷 색이 원소색(icy blue)
+대신 원본 "GOLDEN royal armor" 문구에 이끌려 금색으로 되돌아갔다 — "That was wrong -
+the armor came out gold colored again... NOT gold/yellow... same colors as the
+cap/helm/hornh/hoodh/mask ice combos already made" 식으로 재수정해 해결(1회 정정으로
+성공). **새로운 교훈**: "same X from the previous image" 패턴이 실루엣 드리프트는 잘
+막아도, 프롬프트에 원래 계열명(예: "GOLDEN royal knight armor")을 색상 설명 없이
+그대로 남겨두면 원소색 대신 그 단어의 원래 색으로 색이 되돌아갈 수 있다 — 색 재지정이
+필요한 매 프롬프트마다 "NOT <원래색>"을 명시하는 게 안전하다.
+
+## 14-2. ⚠ 검(sword) 기본 공격이 원소에 따라 화면을 가로지르는 사거리 버그 발견·수정
+
+세션 도중 사용자가 실제 플레이 확인 후 지적: "검 평타 공격은 던전앤파이터의
+웨펀마스터 같은 느낌으로 해야한다. 그리고 칼 공격은 너무 멀리까지 닿으면 이상한거
+알지?" (+ "던파의 버서커 같은 느낌도 좋다").
+
+**원인 조사 결과(코드 직접 대조, 추측 아님)**: `buildAbils()`(game.html ~2569행)가
+검 아키타입(`ARCHE[0]`, id `'blade'`, `ARCHE[a].kinds`엔 `['melee','melee','spin']`로
+명시돼 있었으나 이 필드는 실제로 안 쓰이고 있었다)의 실제 `kind`를
+`KP=['melee','spin','orbit','laser','chain']` 배열에서 `e%5`(원소 인덱스)로 순환
+배정한다 — 즉 11원소 중 `laser`(사거리 760)나 `chain`(사거리 300)이 걸리는 원소는
+겉보기엔 평범한 "검"인데 실제 타격 판정과 시각 이펙트(`weaponSwingFX`가 `A.kind`와
+무관하게 항상 검 슬래시 모양을 그림)가 화면 크기에 육박하는 범위까지 뻗어나갔다.
+`castSkillCore`의 `rng=A.range[t]*(A.skill?0.5:1)*SC`에서 기본 공격(`A.skill`
+false)은 스킬과 달리 사거리 축소(0.5배)조차 안 걸려 더 심했다.
+
+**수정**(game.html, `buildAbils()` 내부 1줄 + 주석): 검 아키타입(`a===0`)에서만
+`kRng=Math.min(kRng,210)`으로 사거리 상한을 걸었다. kind별 연출·판정 방식(레이저 광선
+모양, 사슬 번개 등)은 그대로 살리되 숫자만 근접 무기다운 범위로 압축 — tier2(+강화
+최대) 기준 최대 사거리가 laser 1018→281, chain 402→281로 줄었다(근접 기본값
+203.7과 비교해 +38% 수준, 이전엔 최대 +400%). `kind='melee'`(기존 152)·`'orbit'`
+(기존 126)는 원래도 상한 이하라 변화 없음. 지팡이(`cast`)·망치(`heavy`) 아키타입은
+건드리지 않음(원래도 원거리·범위 성격이 맞는 무기).
+
+**검증**: 신규 `/tmp/t_blade_range_check.js`(검 아키타입 11개 abil의 `A.range` 실측 —
+수정 후 tier2 최대 281.4 확인), 신규 `/tmp/t_blade_visual.js`(실제로 sword 무기 +
+laser-kind였던 `leaf_blade` abil을 장착하고 원거리 적을 공격 → 스크린샷으로 확인,
+피격 데미지 정상 적용, 에러 0), `t_regress.js` 25/25, `t_nan.js` 451회 감시 이상무.
+`tests/t_pli_combo_verify.js`(아래 14-3절)도 이 변경 이후 재실행해 통과 확인.
+
+**하지 않은 것**: "웨펀마스터/버서커 같은 타격감"이라는 더 큰 주문(콤보 타이밍,
+히트스톱 강화, 모션 차별화 등)은 이번 세션에서 손대지 않았다 — 사거리 버그는 명확한
+결함이라 바로 고쳤지만, 타격감 재설계는 실제 플레이 스크린샷·반복 튜닝이 필요한
+별도 작업이라 108장 원소 그림 완성(사용자가 명시적으로 우선순위를 준 작업)을 먼저
+끝내는 쪽을 택했다. **다음 세션 최우선 후보**로 남겨둠 — `DNF-Kirby-BurningStone-
+전투벤치마킹.md`(claude.ai 프로젝트)에 이미 던파 웨펀마스터/붉은보석 벤치마킹 자료가
+있으니 그걸 기반으로 시작하면 된다.
+
+## 14-3. 재빌드·회귀·종단 검증
+
+```
+python3 build.py                  # 그림 713장 주입, dotorisup.html 14.6MB
+node t_regress.js                 # 25/25
+node t_nan.js                     # 451회 감시, NaN·예외 없음
+node --check <script 추출>         # acorn 모듈이 net 제한으로 설치 불가해 t_static.js
+                                   # 대신 문법 검사만 별도 수행 — 문법 오류 없음
+node tests/t_pli_combo_verify.js  # 신규 작성 — pumpkin+light+ice 108/108 콤보 전부
+                                   # T.artOf() 로 정상 해석 확인, 에러 0
+```
+
+## 14-4. 결론 — pumpkin·light·ice 3원소 완성 (1차 완성본)
+
+**갑옷 6계열 × 투구 6종 × 3원소(pumpkin/light/ice) = 108/108 콤보 그림 완성**,
+검 사거리 버그 수정까지 포함해 재빌드·회귀·종단 검증 전부 통과. 기존 acorn 42개 +
+fire 36개(이전 세션)에 영향 없음 확인. **누적: acorn 42 + fire 36 + pumpkin 36 +
+light 36 + ice 36 = 186장.**
+
+## 14-5. 남은 작업 (다음 세션)
+
+- **원소 6종 남음**: leaf, wind, stone, water, shade, star. 원소마다 6계열×6투구=36장
+  (총 216장 남음) — 13-5절과 동일한 절차 반복.
+- **[신규, 우선순위 사용자 판단]** 14-2절의 "웨펀마스터/버서커 같은 타격감" 재설계 —
+  `DNF-Kirby-BurningStone-전투벤치마킹.md` 참고해서 시작.
+- `zoom` 컴퓨터 액션 사용 자제(13-1 참고).
+- `HEAD_LAYER_BARE`/`hwbare_*` 죽은 코드 정리(미착수, 낮은 우선순위).
+- (권장) `acorn` npm 패키지를 설치 가능한 세션에서 한 번 받아 캐시해 두면 `t_static.js`
+  문법 검사를 원래 방식대로 돌릴 수 있다 — 이번 세션은 net 제한으로 우회 검증만 했음.
