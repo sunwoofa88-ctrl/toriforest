@@ -17900,6 +17900,101 @@ var SHEETS={
    재화라 설명 없이 바로 이해된다. 아이콘은 지금은 이모지(빠르고 확실히
    동작)로 채우고, 프리미엄 AI 그림은 다음 세션에서 이 자리(DECOR_ITEMS[].ic)만
    webp 키로 바꿔 끼우면 되도록 구조를 분리해 둔다. */
+/* ══════════════════════ 쉼터 방 확장 (2026-08-31 신규) ══════════════════════
+   사용자 요청: "쉼터를 확장해나가는 방식은 어떨까? 재화를 많이 모아서 빈 방
+   하나를 추가할 수 있으며, 그 방을 또 꾸밀 수 있는거지" + "방 이동하기 방식은
+   던전앤파이터 방식 참고해라" — DFO 마을은 여러 구역이 옆으로 이어져 있고
+   화면 가장자리로 걸어가면 옆 구역으로 넘어가며(walk-to-edge), 동시에
+   구역 이름표/퀵 이동 탭으로 바로 점프도 가능하다(quick travel). 이 두 가지를
+   그대로 반영한다.
+   ★ 범위 note: 이번엔 새 AI 그림을 그리지 않고 방마다 다른 벽지·바닥 색(CSS)을
+   입힌다(로비=main만 기존 AI 배경 유지). 새 그림은 다음 세션으로 미룬다 —
+   VILLAGE_ROOMS[].art 자리에 나중에 webp 키만 끼우면 되도록 구조를 분리해 둔다. */
+var VILLAGE_ROOMS={
+  main:    {n:'침실·거실', ic:'🛌', cost:0,    wall:'#4A3222', floor:'#2C1F14', accent:'#FFB25A'},
+  kitchen: {n:'주방',      ic:'🍳', cost:1200, wall:'#8A5A3B', floor:'#5C3A22', accent:'#FF9A4D'},
+  study:   {n:'서재',      ic:'📚', cost:2200, wall:'#3E4A50', floor:'#283236', accent:'#8FD0C9'},
+  garden:  {n:'정원',      ic:'🌿', cost:3200, wall:'#4C6B3E', floor:'#33472A', accent:'#B7E37A'},
+  attic:   {n:'다락방',    ic:'🌙', cost:4500, wall:'#332B4A', floor:'#211B33', accent:'#B99CFF'}
+};
+var VILLAGE_ROOM_ORDER=['main','kitchen','study','garden','attic'];
+function roomState(){
+  if(!S.rooms || typeof S.rooms!=='object') S.rooms={unlocked:{main:1},cur:'main',x:0.5};
+  if(!S.rooms.unlocked || typeof S.rooms.unlocked!=='object') S.rooms.unlocked={main:1};
+  if(!S.rooms.unlocked.main) S.rooms.unlocked.main=1;
+  if(!S.rooms.cur || !VILLAGE_ROOMS[S.rooms.cur]) S.rooms.cur='main';
+  if(typeof S.rooms.x!=='number') S.rooms.x=0.5;
+  return S.rooms;
+}
+function roomUnlock(id){
+  var R=roomState(), def=VILLAGE_ROOMS[id]; if(!def) return false;
+  if(R.unlocked[id]) return true;
+  if((S.acorn|0)<def.cost){ SFX.no&&SFX.no(); toast('도토리가 모자라요 🌰 ('+def.cost+'개 필요)'); return false; }
+  S.acorn-=def.cost; R.unlocked[id]=1; SFX.coin&&SFX.coin(); saveGame(); syncHUD();
+  toast(def.ic+' '+def.n+' 방이 생겼어요! 이제 여기도 꾸밀 수 있어요 🎉');
+  return true;
+}
+/* CSS만으로 그리는 방 배경(새 그림 없이 방 테마색만 다르게) — main 이외 방에 사용 */
+function roomBgHtml(themeId){
+  var t=VILLAGE_ROOMS[themeId];
+  return '<div style="position:absolute;inset:0;background:linear-gradient(180deg,'+t.wall+' 0%,'+t.wall+' 62%,'+t.floor+' 62%,'+t.floor+' 100%)"></div>'+
+    '<div style="position:absolute;left:0;right:0;top:0;height:62%;background:repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 2px,transparent 2px 34px)"></div>'+
+    '<div style="position:absolute;left:0;right:0;bottom:0;height:38%;background:repeating-linear-gradient(90deg,rgba(0,0,0,.14) 0 30px,transparent 30px 33px);box-shadow:0 -3px 14px rgba(0,0,0,.35) inset"></div>'+
+    '<div style="position:absolute;top:6%;left:50%;transform:translateX(-50%);width:20vh;height:20vh;max-width:130px;max-height:130px;border-radius:50%;'+
+      'background:radial-gradient(circle at 35% 30%,'+t.accent+',rgba(0,0,0,0) 72%);opacity:.4;filter:blur(3px);pointer-events:none"></div>'+
+    '<div style="position:absolute;left:0;right:0;top:0;height:70px;background:linear-gradient(180deg,rgba(0,0,0,.42),transparent);pointer-events:none"></div>';
+}
+/* 침대 = 수면(체력 회복), 벽난로 = 잠깐 쉬기. 가구도 소품 시스템에 편입됐으므로
+   (요청 "가구들도 소품으로 추가") 여기서 실제 동작을 함수로 뺀다 — 소품 탭 /
+   전용 "눕기" 버튼 둘 다 이 함수를 그대로 쓴다. */
+function villageSleep(wrap){
+  var mh=maxHp();
+  if(HP>=mh){ toast('이미 체력이 가득해요 🌙'); return; }
+  var ov=el('div');
+  ov.style.cssText='position:absolute;inset:0;background:rgba(10,8,20,.55);display:flex;'+
+    'align-items:center;justify-content:center;font-size:54px;z-index:50;opacity:0;transition:opacity .3s;pointer-events:none';
+  ov.textContent='💤';
+  wrap.appendChild(ov);
+  requestAnimationFrame(function(){ ov.style.opacity='1'; });
+  SFX.coin&&SFX.coin();
+  setTimeout(function(){
+    HP=mh; needSync=1; syncHUD();
+    ov.style.opacity='0';
+    setTimeout(function(){ ov.remove(); toast('폭신한 이불 속에서 포근하게 쉬었어요! 체력이 가득 찼어요 💤'); },320);
+  },900);
+}
+function villageWarm(){
+  SFX.coin&&SFX.coin(); toast('벽난로가 타닥타닥, 마음까지 따뜻해져요 🔥');
+}
+/* ★ 2026-08-31 신규 — "쉼터 내에서도 주인공 캐릭터가 돌아다닐 수 있게" +
+   "방 이동하기 방식은 던전앤파이터 방식 참고해라": DFO 마을처럼 화면
+   가장자리로 걸어가면 옆방으로 넘어간다(잠겨 있으면 막고 힌트만). 방
+   탭(퀵 이동)으로 바로 점프하는 것과는 별개 경로 — renderVillage()의 wrap
+   클릭 핸들러가 이 함수를 호출한다. */
+function villageWalkTo(fx, wrap, doll){
+  var R=roomState();
+  fx=Math.min(0.95,Math.max(0.05,fx));
+  R.x=fx; saveGame();
+  doll.style.left=(fx*100)+'%';
+  var idx=VILLAGE_ROOM_ORDER.indexOf(R.cur);
+  if(fx<=0.06 && idx>0){
+    var prevId=VILLAGE_ROOM_ORDER[idx-1];
+    if(R.unlocked[prevId]) setTimeout(function(){ villageGoRoom(prevId, 0.9); },260);
+    else toast('🔒 '+VILLAGE_ROOMS[prevId].n+' — 도토리 '+VILLAGE_ROOMS[prevId].cost+'개로 열 수 있어요 (위 방 탭에서)','warn',null,1800);
+  } else if(fx>=0.94 && idx<VILLAGE_ROOM_ORDER.length-1){
+    var nextId=VILLAGE_ROOM_ORDER[idx+1];
+    if(R.unlocked[nextId]) setTimeout(function(){ villageGoRoom(nextId, 0.1); },260);
+    else toast('🔒 '+VILLAGE_ROOMS[nextId].n+' — 도토리 '+VILLAGE_ROOMS[nextId].cost+'개로 열 수 있어요 (위 방 탭에서)','warn',null,1800);
+  }
+}
+function villageGoRoom(id, enterX){
+  if(!VILLAGE_ROOMS[id]) return;
+  var R=roomState();
+  if(!R.unlocked[id]) return;   /* 잠긴 방은 탭에서 roomUnlock()으로 먼저 열어야 한다 */
+  R.cur=id; R.x=(typeof enterX==='number')? enterX : 0.5;
+  saveGame();
+  renderSheet();
+}
 var DECOR_ITEMS={
   d_plant:  {n:'작은 화분',     ic:'🪴', cost:120},
   d_frame:  {n:'추억 액자',     ic:'🖼️', cost:150},
@@ -17972,10 +18067,29 @@ var DECOR_ITEMS={
     DECOR_ITEMS[it[0]]={n:it[1], ic:it[2], cost:tierCost(i)};
   }
 })();
+/* ★ 2026-08-31 — "가구들도 소품으로 추가"(사용자 요청) : 침대·벽난로를 진짜
+   소품 시스템에 편입한다. fn 태그가 있으면 같은 fn 그룹(bed/fire) 중 정확히
+   1개만 "사용 중"으로 표시되고 실제로 화면에 그려지며, 상점에서 "사용하기"로
+   서로 교체할 수 있다 — 기본형은 무료로 항상 보유, 고급형은 도토리로 구매. */
+DECOR_ITEMS.d_bed_basic  ={n:'기본 침대',   ic:'🛏️', cost:0,   fn:'bed'};
+DECOR_ITEMS.d_bed_deluxe ={n:'고급 침대',   ic:'🛌', cost:900, fn:'bed'};
+DECOR_ITEMS.d_fire_basic ={n:'기본 벽난로', ic:'🔥', cost:0,   fn:'fire'};
+DECOR_ITEMS.d_fire_deluxe={n:'화로대',      ic:'🪵', cost:900, fn:'fire'};
 function decorState(){
-  if(!S.decor || typeof S.decor!=='object') S.decor={owned:{},pos:{}};
+  if(!S.decor || typeof S.decor!=='object') S.decor={owned:{},pos:{},use:{}};
   if(!S.decor.owned || typeof S.decor.owned!=='object') S.decor.owned={};
   if(!S.decor.pos   || typeof S.decor.pos!=='object')   S.decor.pos={};
+  if(!S.decor.use   || typeof S.decor.use!=='object')   S.decor.use={};
+  /* ★ 2026-08-31 방 확장 — pos 가 이제 {room,x,y}. 방 기능 이전에 저장된 옛
+     자리는 room 이 없으므로 'main'으로 마이그레이션한다. */
+  for(var k in S.decor.pos){ if(S.decor.pos[k] && !S.decor.pos[k].room) S.decor.pos[k].room='main'; }
+  /* 기본 침대·벽난로는 모든 저장(신규/기존 다) 항상 보유 + 기본 사용 중으로 시작 */
+  if(!S.decor.owned.d_bed_basic)  S.decor.owned.d_bed_basic=1;
+  if(!S.decor.owned.d_fire_basic) S.decor.owned.d_fire_basic=1;
+  if(!S.decor.use.bed)  S.decor.use.bed='d_bed_basic';
+  if(!S.decor.use.fire) S.decor.use.fire='d_fire_basic';
+  if(!S.decor.pos.d_bed_basic)  S.decor.pos.d_bed_basic ={room:'main',x:0.22,y:0.66};
+  if(!S.decor.pos.d_fire_basic) S.decor.pos.d_fire_basic={room:'main',x:0.82,y:0.62};
   return S.decor;
 }
 /* ★ 소품이 8종 → 100종으로 늘어나면서(2026-08-31) 겹침 판정 박스 크기와 자동배치
@@ -17985,12 +18099,13 @@ function decorState(){
 var DECOR_BOXW=0.115, DECOR_BOXH=0.090;
 /* 새로 산 소품을 겹치지 않는 자리에 자동으로 놓는다 — 격자 후보를 훑어서
    기존 소품과 안 겹치는 첫 자리를 쓴다(사용자 요청 "겹치기는 안되게"). */
-function decorFreeSpot(excludeId){
+function decorFreeSpot(excludeId, room){
   var D=decorState();
+  room=room||'main';
   function overlapAny(x,y){
     for(var k in D.owned){
       if(!D.owned[k] || k===excludeId) continue;
-      var p=D.pos[k]; if(!p) continue;
+      var p=D.pos[k]; if(!p || p.room!==room) continue;
       if(Math.abs(p.x-x)<DECOR_BOXW && Math.abs(p.y-y)<DECOR_BOXH) return true;
     }
     return false;
@@ -18000,7 +18115,7 @@ function decorFreeSpot(excludeId){
     for(var c=0;c<cols;c++){
       var x=0.08 + c*((0.92-0.08)/(cols-1));
       var y=0.30 + r*((0.86-0.30)/(rows-1));
-      if(!overlapAny(x,y)) return {x:x,y:y};
+      if(!overlapAny(x,y)) return {room:room,x:x,y:y};
     }
   }
   /* ★ 2026-08-31 — 100종 전수 구매 테스트에서 발견: 격자(약 45~50칸 실사용
@@ -18008,15 +18123,16 @@ function decorFreeSpot(excludeId){
      드래그도 못 하는 상태가 됐다. id를 씨앗으로 한 결정적 유사난수로 화면
      전체에 흩어놓아 최소한 다 따로 보이고 옮길 수 있게 한다(완전 무겹침은
      보장 못 함 — 방 하나에 소품이 많아지면 근본적으로 공간이 부족해지므로,
-     "쉼터를 방 단위로 확장" 아이디어가 이 문제의 진짜 해결책이다). */
+     방 단위로 나눠 꾸밀 수 있게 한 것 자체가 이 문제의 진짜 해결책이다). */
   var h=0; for(var ci=0; ci<excludeId.length; ci++) h=(h*31 + excludeId.charCodeAt(ci)) >>> 0;
   var fx=0.10 + (h%97)/97*0.80;
   var fy=0.32 + ((h>>>7)%53)/53*0.50;
-  return {x:fx,y:fy};
+  return {room:room,x:fx,y:fy};
 }
-function decorAutoPlace(id){
+function decorAutoPlace(id, room){
   var D=decorState();
-  if(!D.pos[id]) D.pos[id]=decorFreeSpot(id);
+  room=room||'main';
+  if(!D.pos[id] || D.pos[id].room!==room) D.pos[id]=decorFreeSpot(id, room);
 }
 function renderDecorShop(){
   var D=decorState();
@@ -18034,16 +18150,39 @@ function renderDecorShop(){
       var ic=el('div',null,it.ic); ic.style.fontSize='32px'; c.appendChild(ic);
       c.appendChild(el('div','nm',it.n));
       if(owned){
-        var tag=el('span','qty',''); tag.textContent='보유중'; tag.style.cssText='background:#7BC77E;color:#173B1A';
-        c.appendChild(tag);
-        c.addEventListener('click',function(){ toast(it.n+'은(는) 이미 쉼터에 있어요 — 쉼터에서 끌어 옮겨보세요 🍂'); });
+        /* ★ 2026-08-31 — 침대·벽난로(fn 태그)는 같은 자리를 두고 여러 스킨이
+           경쟁하는 "가구"다. 다른 소품처럼 그냥 "보유중"이 아니라, 지금 안 쓰는
+           스킨이면 눌러서 바로 갈아 끼울 수 있게 한다(요청 "가구들도... 다른 걸로
+           교체할 수 있게"). */
+        var inUse = it.fn ? (D.use[it.fn]===id) : true;
+        if(inUse){
+          var tag=el('span','qty',''); tag.textContent=it.fn?'사용 중':'보유중';
+          tag.style.cssText='background:#7BC77E;color:#173B1A';
+          c.appendChild(tag);
+          c.addEventListener('click',function(){
+            toast(it.fn? (it.n+'은(는) 지금 쓰고 있어요') : (it.n+'은(는) 이미 쉼터에 있어요 — 쉼터에서 끌어 옮겨보세요 🍂'));
+          });
+        } else {
+          var useBtn=el('div',null,'✅ 사용하기');
+          useBtn.style.cssText='font-size:12px;color:#3A6FD8;font-weight:800;margin-top:2px';
+          c.appendChild(useBtn);
+          c.addEventListener('click',function(){
+            D.use[it.fn]=id;
+            decorAutoPlace(id, roomState().cur);
+            SFX.coin&&SFX.coin(); saveGame(); syncHUD();
+            toast(it.n+'(으)로 바꿨어요!');
+            renderSheet();
+          });
+        }
       } else {
         var cost=el('div',null,'🌰 '+it.cost);
         cost.style.cssText='font-size:12px;color:#9C6B33;font-weight:800;margin-top:2px';
         c.appendChild(cost);
         c.addEventListener('click',function(){
           if((S.acorn|0)<it.cost){ SFX.no&&SFX.no(); toast('도토리가 모자라요 🌰 ('+it.cost+'개 필요)'); return; }
-          S.acorn-=it.cost; D.owned[id]=1; decorAutoPlace(id);
+          var curRoom=roomState().cur;
+          S.acorn-=it.cost; D.owned[id]=1; decorAutoPlace(id, curRoom);
+          if(it.fn) D.use[it.fn]=id;   /* 새로 산 가구는 바로 사용 중으로 바뀐다 */
           SFX.coin(); saveGame(); syncHUD();
           toast(it.n+'을(를) 샀어요! 쉼터에 놓였어요 🎉');
           renderSheet();
@@ -18057,12 +18196,13 @@ function renderDecorShop(){
 /* 쉼터 화면 위에 산 소품들을 그려서 드래그로 옮길 수 있게 한다.
    wrap 을 기준으로 한 비율 좌표(0~1)로 저장/복원한다 — 화면 크기가 달라도
    항상 같은 자리에 보인다. */
-function renderDecorPlaced(wrap){
+function renderDecorPlaced(wrap, room){
   var D=decorState();
+  room=room||'main';
   function overlapAny(id,x,y){
     for(var k in D.owned){
       if(!D.owned[k] || k===id) continue;
-      var p=D.pos[k]; if(!p) continue;
+      var p=D.pos[k]; if(!p || p.room!==room) continue;
       if(Math.abs(p.x-x)<DECOR_BOXW && Math.abs(p.y-y)<DECOR_BOXH) return true;
     }
     return false;
@@ -18070,10 +18210,15 @@ function renderDecorPlaced(wrap){
   for(var id in D.owned){
     if(!D.owned[id]) continue;
     var it=DECOR_ITEMS[id]; if(!it) continue;
-    if(!D.pos[id]) D.pos[id]=decorFreeSpot(id);
+    /* 가구(fn 태그)는 같은 그룹에서 "사용 중"인 스킨 하나만 그린다 —
+       고급 침대로 갈아 끼웠으면 기본 침대는 보유는 하되 화면엔 안 보인다. */
+    if(it.fn && D.use[it.fn]!==id) continue;
+    if(!D.pos[id]) D.pos[id]=decorFreeSpot(id, room);
+    if(D.pos[id].room!==room) continue;   /* 다른 방에 있는 소품은 여기 안 그린다 */
     (function(id,it){
       var pos=D.pos[id];
       var box=el('div');
+      box.setAttribute('data-decorbox','1');
       box.style.cssText='position:absolute;left:'+(pos.x*100)+'%;top:'+(pos.y*100)+'%;'+
         'transform:translate(-50%,-50%);width:13vw;height:13vw;max-width:60px;max-height:60px;'+
         'display:flex;align-items:center;justify-content:center;font-size:min(8.6vw,40px);'+
@@ -18081,12 +18226,14 @@ function renderDecorPlaced(wrap){
         'user-select:none;-webkit-user-select:none;z-index:6';
       box.textContent=it.ic;
       wrap.appendChild(box);
-      var dragging=false, wrapRect=null, lastGood={x:pos.x,y:pos.y}, curFrac=null;
+      var dragging=false, wrapRect=null, lastGood={x:pos.x,y:pos.y}, curFrac=null, downFrac=null;
       box.addEventListener('pointerdown',function(e){
         dragging=true; curFrac=null;
         try{ box.setPointerCapture(e.pointerId); }catch(er){}
         wrapRect=wrap.getBoundingClientRect();
+        downFrac={x:(e.clientX-wrapRect.left)/wrapRect.width, y:(e.clientY-wrapRect.top)/wrapRect.height};
         box.style.cursor='grabbing'; box.style.zIndex=30; box.style.filter='drop-shadow(0 8px 10px rgba(0,0,0,.55)) brightness(1.08)';
+        e.stopPropagation();
         if(e.cancelable) e.preventDefault();
       },{passive:false});
       box.addEventListener('pointermove',function(e){
@@ -18096,16 +18243,25 @@ function renderDecorPlaced(wrap){
         curFrac={x:fx,y:fy};
         box.style.left=(fx*100)+'%'; box.style.top=(fy*100)+'%';
       });
-      function endDrag(){
+      function endDrag(e){
         if(!dragging) return;
         dragging=false; box.style.cursor='grab'; box.style.zIndex=6;
         box.style.filter='drop-shadow(0 4px 5px rgba(0,0,0,.5))';
         var f=curFrac||lastGood;
+        var moved = downFrac ? Math.hypot(f.x-downFrac.x, f.y-downFrac.y) : 0;
+        if(it.fn && moved<0.02){
+          /* 거의 안 움직였으면 드래그가 아니라 "탭"으로 보고 가구 기능을 실행한다
+             (요청 "침대에 누워자는 기능"). 자리는 그대로 둔다. */
+          box.style.left=(lastGood.x*100)+'%'; box.style.top=(lastGood.y*100)+'%';
+          if(it.fn==='bed') villageSleep(wrap);
+          else if(it.fn==='fire') villageWarm();
+          return;
+        }
         if(overlapAny(id,f.x,f.y)){
           box.style.left=(lastGood.x*100)+'%'; box.style.top=(lastGood.y*100)+'%';
           toast('다른 소품과는 겹칠 수 없어요 🙅','warn',null,1200);
         } else {
-          lastGood={x:f.x,y:f.y}; D.pos[id]=lastGood; saveGame();
+          lastGood={x:f.x,y:f.y}; D.pos[id]={room:room,x:f.x,y:f.y}; saveGame();
         }
       }
       box.addEventListener('pointerup',endDrag);
@@ -19747,15 +19903,20 @@ function renderVillage(){
      팝업 카드가 아니라 '화면 전체를 덮는 장소'처럼 보이길 원함.
      openSheet()에서 sheetEl에 sheetVillage 클래스를 달아 시트의 카드 프레임
      (헤더바·탭·하단 닫기바·둥근 카드)을 CSS로 다 꺼두었다 — 여기서는 그 빈
-     전체 화면(sheetBody, 100%) 하나에 장면을 통째로 그린다. */
+     전체 화면(sheetBody, 100%) 하나에 장면을 통째로 그린다.
+     ★ 2026-08-31 방 확장 — 여러 방(VILLAGE_ROOMS) 중 지금 있는 방(R.cur)만
+     그린다. main 은 기존 AI 배경/CSS 그대로, 나머지는 roomBgHtml() 테마. */
+  var R=roomState();
   var wrap=el('div');
-  var bgArt = ART_SRC['village_bg'];
+  var bgArt = (R.cur==='main') ? ART_SRC['village_bg'] : null;
   wrap.style.cssText='position:relative;width:100%;height:100%;overflow:hidden;'+
     (bgArt
       ? ('background:#2C1F14 url('+JSON.stringify(bgArt)+') center/cover no-repeat')
-      : 'background:radial-gradient(120% 90% at 50% 18%,#6B4E30 0%,#4A3222 55%,#2C1F14 100%)');
+      : (R.cur==='main'
+          ? 'background:radial-gradient(120% 90% at 50% 18%,#6B4E30 0%,#4A3222 55%,#2C1F14 100%)'
+          : 'background:'+VILLAGE_ROOMS[R.cur].floor));
 
-  wrap.innerHTML = bgArt ? (
+  wrap.innerHTML = (R.cur!=='main') ? roomBgHtml(R.cur) : (bgArt ? (
     /* ══ AI 그림 배경(2026-08-31, 사용자 요청 "로비도 AI 이미지로 고급지게") ══
        art/village_bg.webp 를 풀스크린 cover 로 깐다. 창문·랜턴·벽난로·침대·
        바닥 등은 이제 그림 안에 이미 그려져 있으므로 CSS 도형들은 다 지우고,
@@ -19780,10 +19941,10 @@ function renderVillage(){
         'transform-origin:bottom center;transform:translate(-50%,-100%) rotate(60deg)"></div>'+
       '<div style="position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#2C1B10;transform:translate(-50%,-50%)"></div>'+
     '</div>'+
-    /* 벽난로 히트존 - 그림 속 벽난로(오른쪽 아래) 위, 그림 자체는 투명 */
-    '<div id="vFire" style="position:absolute;right:2%;bottom:28%;width:34%;height:26%;cursor:pointer"></div>'+
-    /* 침대 히트존 - 그림 속 침대(왼쪽 아래) 위, 그림 자체는 투명 */
-    '<div id="vBed" style="position:absolute;left:0;bottom:40%;width:44%;height:22%;cursor:pointer"></div>'+
+    /* ★ 2026-08-31 — 침대·벽난로가 소품 시스템(fn 태그)으로 옮겨가면서
+       (요청 "가구들도 소품으로 추가") 여기 있던 투명 히트존 #vFire/#vBed는
+       뺐다 — 실제 기능은 이제 renderDecorPlaced() 가 그리는 🛏️/🔥 소품 아이콘이
+       담당한다. 그림 속 벽난로·침대 자체는 배경 장식으로 그대로 남는다. */
     /* 상단 어둡게(가독성) */
     '<div style="position:absolute;left:0;right:0;top:0;height:80px;background:linear-gradient(180deg,rgba(0,0,0,.5),transparent);pointer-events:none"></div>'
   ) : (
@@ -19819,14 +19980,14 @@ function renderVillage(){
       '<div style="position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#2C1B10;transform:translate(-50%,-50%)"></div>'+
     '</div>'+
     /* 벽난로 - 오른쪽 */
-    '<div id="vFire" style="position:absolute;right:6%;bottom:30%;width:22vw;max-width:130px;height:34vh;max-height:190px;cursor:pointer">'+
+    '<div style="position:absolute;right:6%;bottom:30%;width:22vw;max-width:130px;height:34vh;max-height:190px">'+
       '<div style="position:absolute;bottom:0;width:100%;height:78%;border-radius:14px 14px 0 0;'+
         'background:linear-gradient(180deg,#9A9184,#736A5C);border:4px solid var(--ink)"></div>'+
       '<div style="position:absolute;bottom:10%;left:14%;width:72%;height:52%;border-radius:8px;background:#1C110D"></div>'+
       '<div style="position:absolute;bottom:13%;left:28%;font-size:min(9vw,44px);filter:drop-shadow(0 0 16px #FF8A2A)">🔥</div>'+
     '</div>'+
     /* 침대 - 왼쪽 */
-    '<div id="vBed" style="position:absolute;left:6%;bottom:22%;width:30vw;max-width:190px;height:20vh;max-height:110px;cursor:pointer">'+
+    '<div style="position:absolute;left:6%;bottom:22%;width:30vw;max-width:190px;height:20vh;max-height:110px">'+
       '<div style="position:absolute;bottom:0;width:100%;height:16%;background:#5C3D1F;border-radius:0 0 8px 8px;border:4px solid var(--ink);border-top:none"></div>'+
       '<div style="position:absolute;bottom:14%;width:100%;height:44%;border-radius:10px;border:4px solid var(--ink);'+
         'background:repeating-linear-gradient(45deg,#E8664F 0 14px,#F4EFE3 14px 28px)"></div>'+
@@ -19837,14 +19998,15 @@ function renderVillage(){
       'background:#C4573F;opacity:.5;filter:blur(.3px)"></div>'+
     /* 상단 어둡게(가독성), 하단 액션바 배경용 그라데이션 */
     '<div style="position:absolute;left:0;right:0;top:0;height:70px;background:linear-gradient(180deg,rgba(0,0,0,.45),transparent);pointer-events:none"></div>'
-  );
+  ));
   sheetBody.appendChild(wrap);
 
   /* 상단 : 장소 이름표 + 닫기(헤더바를 꺼서 직접 그린다) */
   var hdr=el('div');
   hdr.style.cssText='position:absolute;top:0;left:0;right:0;display:flex;align-items:center;'+
     'justify-content:space-between;padding:calc(10px + var(--safe-t,0px)) 14px 0';
-  hdr.innerHTML='<b style="color:#FFF3E0;font-family:var(--f-disp);font-size:20px;text-shadow:0 2px 4px rgba(0,0,0,.6)">🛖 오두막 쉼터</b>';
+  hdr.innerHTML='<b style="color:#FFF3E0;font-family:var(--f-disp);font-size:20px;text-shadow:0 2px 4px rgba(0,0,0,.6)">'+
+    (R.cur==='main'?'🛖 오두막 쉼터':(VILLAGE_ROOMS[R.cur].ic+' '+VILLAGE_ROOMS[R.cur].n))+'</b>';
   var xb=el('button',null,'✕');
   xb.style.cssText='width:40px;height:40px;border-radius:50%;border:3px solid var(--ink);'+
     'background:linear-gradient(180deg,#FF9C9C,#D42F2F);color:#fff;font-size:19px;box-shadow:0 4px 0 rgba(44,33,25,.3)';
@@ -19875,21 +20037,53 @@ function renderVillage(){
     wrap.appendChild(prog);
   }catch(e){}
 
-  /* 주인공을 러그 위, 침대와 벽난로 사이에 세운다 (장비 착용 화면과 같은 인형 캔버스 재사용) */
+  /* ★ 2026-08-31 신규 — 방 탭(퀵 이동). DFO 마을의 지역 이름표/빠른 이동처럼
+     방 아이콘을 눌러 바로 점프한다. 잠긴 방은 자물쇠+가격을 보여주고, 누르면
+     바로 구매를 시도한다(이 게임의 다른 구매도 전부 원탭 구매 방식). */
+  var tabs=el('div');
+  try{
+    tabs.style.cssText='position:absolute;top:90px;left:8px;right:8px;display:flex;gap:6px;'+
+      'justify-content:center;flex-wrap:wrap';
+    VILLAGE_ROOM_ORDER.forEach(function(rid){
+      var rdef=VILLAGE_ROOMS[rid], unlocked=!!R.unlocked[rid], isCur=(R.cur===rid);
+      var tb=el('button');
+      tb.style.cssText='padding:5px 10px;border-radius:999px;font-size:12px;font-weight:800;'+
+        'border:2px solid '+(isCur?'#FFD34E':'rgba(255,255,255,.25)')+';'+
+        'background:'+(isCur?'rgba(255,211,78,.24)':'rgba(20,13,8,.5)')+';color:#FFE9C7;'+
+        'white-space:nowrap'+(unlocked?'':';opacity:.72');
+      tb.innerHTML = unlocked ? (rdef.ic+' '+rdef.n) : ('🔒 '+rdef.ic+' '+rdef.n+' 🌰'+rdef.cost);
+      tb.addEventListener('click',function(e){
+        e.stopPropagation();
+        if(isCur) return;
+        if(!unlocked){ if(roomUnlock(rid)) villageGoRoom(rid); return; }
+        villageGoRoom(rid);
+      });
+      tabs.appendChild(tb);
+    });
+    wrap.appendChild(tabs);
+  }catch(e){}
+
+  /* 주인공을 러그 위, 침대와 벽난로 사이에 세운다 (장비 착용 화면과 같은 인형 캔버스 재사용)
+     ★ 2026-08-31 — "쉼터 내에서도 주인공 캐릭터가 돌아다닐 수 있게" 요청으로
+     고정 좌표(50%)가 아니라 R.x(0~1, 방마다 저장)를 쓴다. 화면 배경(빈 곳)을
+     탭하면 아래 wrap 클릭 핸들러가 villageWalkTo() 로 이 위치를 옮긴다. */
+  var doll=null;
   try{
     /* 2026-08-31 사용자 제보("로비도 침대나 이런것들이 거대하다..캐릭터 크기에도 좀
        맞게") — AI 배경 그림 속 침대·벽난로가 실사 가구 비율로 커서, 기존 캐릭터
        인형(36vw)이 상대적으로 너무 작아 미니어처 느낌이 안 났다. 인형을 확실히
        키워서 가구와 어울리는 존재감을 준다(발밑 위치는 그대로 러그 위에 고정). */
-    var doll=heroDollCanvas();
-    doll.style.cssText='position:absolute;left:50%;bottom:15%;transform:translateX(-50%);'+
-      'width:min(46vw,235px);height:min(46vw,235px);pointer-events:none;filter:drop-shadow(0 6px 5px rgba(0,0,0,.4))';
+    doll=heroDollCanvas();
+    doll.style.cssText='position:absolute;left:'+(R.x*100)+'%;bottom:15%;transform:translateX(-50%);'+
+      'width:min(46vw,235px);height:min(46vw,235px);pointer-events:none;'+
+      'filter:drop-shadow(0 6px 5px rgba(0,0,0,.4));transition:left .45s ease';
     wrap.appendChild(doll);
   }catch(e){}
 
   /* 2026-08-31 신규 — 산 소품들을 화면 위에 그려서 드래그로 옮길 수 있게 한다
-     (요청 I/J/N: 재료 모아 쉼터 꾸미기 + 상점 + 드래그드롭 배치, 겹침 방지). */
-  try{ renderDecorPlaced(wrap); }catch(e){}
+     (요청 I/J/N: 재료 모아 쉼터 꾸미기 + 상점 + 드래그드롭 배치, 겹침 방지).
+     ★ 방 확장 — 지금 방(R.cur)에 속한 소품만 그린다. */
+  try{ renderDecorPlaced(wrap, R.cur); }catch(e){}
 
   /* 하단 : 반투명 액션바 (참고 이미지의 하단 네비게이션처럼) */
   var bar=el('div');
@@ -19899,7 +20093,7 @@ function renderVillage(){
 
   var cap=el('div');
   cap.style.cssText='color:#FFE9C7;font-size:13px;text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.7)';
-  cap.textContent='🍂 침대 = 체력 회복 · 벽난로 = 잠깐 쉬기 · 아래 버튼으로 바로 이동';
+  cap.textContent='🍂 빈 곳을 탭하면 걸어가요 · 화면 끝까지 걸어가면 옆방으로 · 침대/벽난로를 탭해보세요';
   bar.appendChild(cap);
 
   /* 2026-08-31 사용자 요청("쉼터에서도 던전에서 나타나는 사이드바 모두 보여지게 해줘.
@@ -19923,6 +20117,21 @@ function renderVillage(){
   });
   bar.appendChild(quick);
 
+  /* ★ 2026-08-31 신규 — "침대에 누워자는 기능의 버튼도 추가해줘" 요청: 소품이 된
+     침대를 직접 탭해도 자지만(fn 태그), 눈에 잘 띄는 전용 버튼도 따로 둔다.
+     지금 방에 "사용 중"인 침대가 있을 때만 보인다(다른 방으로 옮기면 그 방에서만). */
+  try{
+    var Dfb=decorState();
+    var bedPos=Dfb.pos[Dfb.use.bed];
+    if(bedPos && bedPos.room===R.cur){
+      var sleepBtn=el('button','bigbtn','🛏️  침대에 눕기');
+      sleepBtn.style.cssText='min-height:44px;font-size:14px;background:linear-gradient(180deg,#8FA7FF,#4C63C9);'+
+        'color:#fff;border-color:#2E3F8F';
+      sleepBtn.addEventListener('click',function(e){ e.stopPropagation(); villageSleep(wrap); });
+      bar.appendChild(sleepBtn);
+    }
+  }catch(e){}
+
   var row=el('div'); row.style.cssText='display:flex;gap:10px';
   var lockLeft=Math.max(0, Math.ceil(((S.villageLockUntil||0)-nowMs())/1000));
   var goDun=el('button','bigbtn', lockLeft>0? ('💤  '+lockLeft+'초만 더 쉬어요') : '🌲  던전 입구로');
@@ -19939,16 +20148,19 @@ function renderVillage(){
   row.appendChild(goDun); row.appendChild(goTw);
   bar.appendChild(row);
 
-  wrap.querySelector('#vBed').addEventListener('click',function(){
-    var mh=maxHp();
-    if(HP>=mh){ toast('이미 체력이 가득해요 🌙'); return; }
-    HP=mh; needSync=1; SFX.coin();
-    toast('폭신한 이불 속에서 포근하게 쉬었어요! 체력이 가득 찼어요 💤');
-    syncHUD();
-  });
-  wrap.querySelector('#vFire').addEventListener('click',function(){
-    SFX.coin(); toast('벽난로가 타닥타닥, 마음까지 따뜻해져요 🔥');
-  });
+  /* ★ 2026-08-31 신규 — "쉼터 내에서도 주인공 캐릭터가 돌아다닐 수 있게" 요청:
+     빈 배경을 탭하면 그 자리로 걸어간다. 헤더·방 탭·액션바·소품 위를 탭한 건
+     각자 자기 버튼 동작을 하도록 제외한다(그 요소들은 이미 자기 클릭에서
+     stopPropagation 하거나, data-decorbox/button 검사로 걸러진다). */
+  if(doll){
+    wrap.addEventListener('click', function(e){
+      if(hdr.contains(e.target) || bar.contains(e.target) || tabs.contains(e.target)) return;
+      if(e.target.closest && e.target.closest('[data-decorbox],button')) return;
+      var rect=wrap.getBoundingClientRect();
+      var fx=(e.clientX-rect.left)/rect.width;
+      villageWalkTo(fx, wrap, doll);
+    });
+  }
 }
 
 function renderTower(){
