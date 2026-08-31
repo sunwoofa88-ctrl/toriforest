@@ -19465,6 +19465,14 @@ function renderVillage(){
       'background:#C4573F;opacity:.55"></div>';
   wrap.appendChild(scene);
 
+  /* 주인공을 러그 위, 침대와 벽난로 사이에 세운다 (장비 착용 화면과 같은 인형 캔버스 재사용) */
+  try{
+    var doll=heroDollCanvas();
+    doll.style.cssText='position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);'+
+      'width:104px;height:104px;pointer-events:none;filter:drop-shadow(0 4px 3px rgba(0,0,0,.35))';
+    scene.appendChild(doll);
+  }catch(e){}
+
   var cap=el('div');
   cap.style.cssText='padding:10px 14px 12px;color:#FFF3E0;font-size:14px;text-align:center;'+
     'background:linear-gradient(180deg,#6B4E30,#5C4229)';
@@ -19484,7 +19492,7 @@ function renderVillage(){
   });
 
   var goDun=el('button','bigbtn','🌲  던전 입구로 가기');
-  goDun.addEventListener('click',function(){ SFX.coin(); openSheet('map',0); });
+  goDun.addEventListener('click',function(){ SFX.coin(); closeSheet(); });
   sheetBody.appendChild(goDun);
 
   var goTw=el('button','bigbtn','🌌  무한의 탑 도전하기');
@@ -20580,6 +20588,10 @@ function beginPlay(){
     banner(BIOME[chapBiome(S.chap)].n, objectiveText(), 1300);
   }
   homeHint();
+  /* 2026-08-31 신규: 게임을 켤 때마다 숲으로 바로 던지지 않고 오두막 쉼터에서 시작한다.
+     (유저 요청: "게임 켰을 때 쉼터에 캐릭터가 있어야지") 월드는 이미 위에서 초기화돼
+     뒤에 그대로 떠 있고, 쉼터에서 '던전 입구로 가기'를 누르면 그 월드로 바로 들어간다. */
+  setTimeout(function(){ openSheet('village',0); }, 60);
 }
 $('tapstart').addEventListener('pointerdown',function(e){ if(e.cancelable) e.preventDefault(); beginPlay(); },{passive:false});
 
