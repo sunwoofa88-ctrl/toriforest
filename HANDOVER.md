@@ -488,3 +488,101 @@ python3 audit_mon.py                # 몬스터 그림 결함 검사
 - `HEAD_LAYER_BARE`/`hwbare_*` 죽은 코드 정리(미착수, 낮은 우선순위, 세션 3부터 이월).
 - **제미나이 다운로드 검증 절차(12-2)를 앞으로 모든 AI 그림 생성 작업에 표준 적용할 것**
   — 화면 확인만으로는 부족하고, 반드시 다운로드된 실제 파일을 열어 확인해야 함.
+
+# 13. 2026-08-31 (세션 5) 작업 요약
+
+**진행 승인**: "그냥 니가 이어서 진행해라" — 원소 11색 변형(12-4 남은 작업) 중
+**fire(불꽃)부터** 먼저 전체 완성하라는 지시로 착수. "작업 멈추지말고 이 대화창에서
+완성본 만들어줘"라는 재확인 지시에 따라 중단 없이 이어서 진행.
+
+## 13-1. fire(불꽃) 원소 콤보 그림 36/36 완성
+
+갑옷 6계열(plate/mage/scale/royal/dark/light) × 투구 6종(cap/helm/hornh/hoodh/mask/
+crownh) = **36개 전부** 제미나이(Ultra)로 생성 → 12-2에서 확립한 강화 검증 절차
+(다운로드 즉시 스테이징 → Read 도구로 실제 파일 픽셀 직접 확인 → 통과 후에만 반영)
+그대로 적용 → `slice_combo.py`로 192×192 슬라이스 → `art/hero_<계열>_<투구>_fire.webp`.
+원본은 `srcart/hero_<계열>_<투구>_fire_src.png`로 보관.
+
+- **light 계열 재확인**: 12-1에서 light는 acorn(기본색) 6개만 있고 fire 등 원소 변형은
+  없었음을 `ls art/hero_light_*.webp`로 재확인 → 36개 범위(6계열×6투구)에 light가
+  포함됨을 확정하고 이번 세션에서 완성.
+- 검증: `ls art/hero_*_fire.webp | wc -l` → 36. 계열별 6/6 확인.
+  `md5sum art/hero_*_fire.webp` 해시 전부 유일(중복 0건) — 12-2에서 겪은 "이전 그림
+  다운로드" 버그 재발 없음.
+- 발견·수정된 색상 오류 1건: royal+fire+hornh 1차 생성분의 투구 금속이 회색/은색으로
+  나와(요청한 ember-copper/bronze 미적용) 육안 확대 검사로 발견 → 같은 제미나이
+  대화창에서 "투구 금속만 갑옷과 어울리는 ember-copper/bronze로, 뿔은 진한
+  maroon/burgundy 유지" 식으로 보정 재요청 → 재생성 확인 완료.
+- **알려진 문제(작업 방식, 이번 세션 2회 발생)**: Chrome 탭에서 `computer` 도구의
+  `zoom` 액션 사용 후 뷰포트가 갑자기 극소 크기(319×220 등)로 줄어드는 버그 발견.
+  `resize_window`로는 복구 안 됨 — **탭을 새로 만들어 같은 제미나이 대화 URL로
+  재접속하는 것만 해결됨**. 앞으로 `zoom` 액션 사용을 피하고 전체 화면 스크린샷 +
+  육안 확인으로 대체할 것.
+
+## 13-2. `heroGeared()` 콤보 그림 매칭 로직을 원소별로 확장
+
+기존 로직은 갑옷·투구가 **둘 다 acorn(기본색, en===0)일 때만** 사전제작 콤보 그림을
+사용했음 (`headEq0 && (headEq0.en|0)===0 && (!ea0 || (ea0.en|0)===0)`). 이번에 갑옷과
+투구가 **같은 원소로 일치**하면(맨몸일 땐 기존대로 acorn 투구만) 콤보 그림을 쓰도록
+확장:
+
+```js
+var headEn0 = headEq0? (headEq0.en|0) : 0;
+var armEn0 = ea0? (ea0.en|0) : 0;
+if(headEq0 && (cls0? (armEn0===headEn0) : (headEn0===0))){
+  var hT2=SLOT_TYPES[headEq0.slot];
+  var headType0=(hT2 && hT2[headEq0.tn])? hT2[headEq0.tn].id : null;
+  if(headType0){
+    var elemId0=(ELEM[headEn0]||ELEM[0]).id;
+    comboKey='hero_'+(cls0||'bare')+'_'+headType0+(headEn0===0? '' : ('_'+elemId0));
+    comboImg=artOf(comboKey);
+  }
+}
+```
+
+파일명 규칙: acorn은 접미사 없음(`hero_<계열>_<투구>.webp`, 기존 42개 그대로 호환),
+그 외 원소는 `hero_<계열>_<투구>_<원소id>.webp`. 아직 안 만든 조합은 `artOf()`가
+`null`을 반환해 **기존 색조 회전(hue-rotate) 오버레이 방식으로 자동 폴백** — 그림이
+없다고 깨지거나 안 보이는 일 없음.
+
+## 13-3. 재빌드 및 회귀 검증
+
+- `python3 build.py`: "그림 605장 주입 (11.6 MB)", `dotorisup.html` 13,094,779 bytes.
+- `bash verify.sh` 계열 (수동, `NODE_PATH=/opt/node-tools/node_modules` 직접 지정 —
+  `verify.sh` 자체의 `NODE_PATH=$(npm root -g)`는 이 환경에서 안 맞음):
+  - `t_static.js`: 통과. 도달불가 코드 2곳(11764·14788줄)은 12-3에서 이미 확인한
+    의도적 죽은 코드(비활성화된 `spreadCamps_DISABLED`, `doUlt`) — 이번 세션과 무관.
+  - `t_regress.js`: **25/25 통과**.
+  - `t_nan.js`: 감시 434회, **NaN/Infinity 없음, 예외 없음**.
+- **신규 종단 검증 `tests/t_fire_combo_verify.js`**: 6계열×6투구 36개 조합을 실제
+  게임(`__TORI` API)에서 장착 → `T.artOf('hero_<계열>_<투구>_fire')`로 콤보 그림이
+  실제로 해석(resolve)되는지 직접 확인 → 캔버스 캡처. **결과: 36/36 캡처, 36/36
+  콤보 해석 성공(comboResolved), 에러 0, 종료 코드 0.**
+  - 캡처된 스크린샷 중 `plate_h_cap_fire`, `royal_h_crownh_fire`, `light_h_hoodh_fire`
+    3장을 Read 도구로 직접 눈으로 확인 — 갑옷·투구가 자연스럽게 하나로 붙은 불꽃
+    색상의 전신 그림이 정확히 렌더링됨을 확인 (모자류가 안 보이거나 투구가 머리와
+    떠 보이는 절대규칙 8번의 원래 문제 없음).
+  - (참고: 최초 작성한 검증 스크립트는 `T.EQUIP` 키를 `k.startsWith(...)`로 검색하는
+    잘못된 로직 때문에 0/36으로 실패했었음 — 실제로는 `h_cap_fire` 같은 이름이 바로
+    `T.EQUIP`의 키였음을 `Object.keys(T.EQUIP).filter(...)`로 재확인 후 직접 대입하는
+    방식으로 수정하여 재실행, 통과.)
+
+## 13-4. 결론 — fire 원소 완성 (1차 완성본)
+
+**갑옷 6계열 × 투구 6종 × fire 원소 = 36/36 콤보 그림 완성, `heroGeared()` 배선 완료,
+실제 게임 렌더링까지 종단 검증 통과.** 기존 acorn 42개 콤보와 기존 게임 동작(회귀
+25/25)에 영향 없음 확인.
+
+## 13-5. 남은 작업 (다음 세션)
+
+- **원소 9종 남음**: ice, leaf, wind, stone, water, light(원소 — light **갑옷 계열**과
+  이름이 겹치니 혼동 주의), shade, star, pumpkin. 각 원소마다 이번 세션과 동일한
+  절차(6계열×6투구=36장 생성 → 검증 → 반영 → 재빌드 → 종단 테스트)를 반복 —
+  9원소 × 36장 = 324장 남음 (전체 396장 중 72장 완료: acorn 42 + fire 36... 단, acorn은
+  bare 포함 42장이고 fire는 bare 제외 36장이므로 절대규칙 8번 총 목표는
+  7계열×6투구×11원소 기준 재확인 필요 — bare에 원소별 변형을 포함할지는 사장님
+  확인 후 착수).
+- 페이스 참고(사장님 질문에 답한 실측치): 이미지 1장당 약 70~90초 실측, 순수 생성
+  시간만 9시간 안팎 예상 — 여러 세션에 걸쳐 진행될 대규모 작업임을 사장님도 인지.
+- `zoom` 컴퓨터 액션 사용 자제(13-1 참고, 탭 뷰포트 축소 버그).
+- `HEAD_LAYER_BARE`/`hwbare_*` 죽은 코드 정리(미착수, 낮은 우선순위, 세션 3부터 이월).

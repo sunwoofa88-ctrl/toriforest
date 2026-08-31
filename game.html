@@ -19890,27 +19890,36 @@ function heroGeared(base, ar){
 
   /* ══ 0) 절대규칙 8번 — AI 사전제작 "이미 착용한 전신" 조합 그림 우선 사용 ══
      좌표 오버레이(mkwear.py)는 구조적 한계가 있다고 실측 확인(2026-08-31,
-     research_equip_rendering.md). 그래서 갑옷클래스×투구타입 조합별로
+     research_equip_rendering.md). 그래서 갑옷클래스×투구타입×원소 조합별로
      제미나이가 그린 전신 그림이 준비돼 있으면 그걸 통째로 쓰고, 없는 조합만
      기존 오버레이 방식으로 폴백한다(전체 조합을 한 번에 다 못 그리므로
      과도기 동안 두 방식이 공존).
-     · 네이밍: art/hero_<armorClass|bare>_<headType>.webp
+     · 네이밍: art/hero_<armorClass|bare>_<headType>[_<elemId>].webp
        (armorClass는 ARM_CLASS 값 그대로 — light/plate/mage/scale/royal/dark 등,
-        headType은 HEAD_LAYER 키 그대로 — cap/helm/hornh/hoodh/mask/crownh)
-     · 지금은 원소색(en) 변형까지 다 그릴 수 없으므로, 장비 원소가 기본값
-       "도토리"(en===0)일 때만 사전제작 그림을 쓴다 — 다른 원소색 장비는
-       기존 색조 회전(hue-rotate) 방식이 여전히 필요하므로 오버레이로 폴백.
-     · 해당 조합 파일이 아직 없으면 artOf()가 null을 돌려주므로 자동으로
-       기존 방식(1, 1-b단계)으로 넘어간다 — 없는 조합을 참조해도 안전하다. */
+        headType은 HEAD_LAYER 키 그대로 — cap/helm/hornh/hoodh/mask/crownh,
+        elemId는 ELEM[].id 그대로 — fire/ice/leaf/... 단, 기본값 "도토리"(en===0)는
+        접미사 없이 hero_<cls>_<headType>.webp 그대로 유지(하위호환))
+     · 갑옷과 투구의 원소(en)가 서로 다르면 조합 그림 한 장으로 양쪽을 다 못
+       담으므로 사용하지 않는다 — 반드시 같은 원소일 때만 조합 그림을 찾는다.
+       맨몸(bare, 장비 없음)은 원소별 조합을 준비하지 않았으므로 도토리(en===0)
+       일 때만 사전제작 그림을 쓴다.
+     · 아직 그리지 않은 (갑옷클래스×투구×원소) 조합은 artOf()가 null을
+       돌려주므로 자동으로 기존 방식(1, 1-b단계 색조회전 오버레이)으로
+       넘어간다 — 없는 조합을 참조해도 안전하다. 2026-08-31 세션 기준
+       fire 원소 36종(6클래스×6투구) 전체 완성, 나머지 9개 원소는 미완성이라
+       자동으로 폴백된다. */
   var ea0=E('a');
   var cls0 = ea0? ARM_CLASS[(ARM_TYPE[ea0.tn]||{}).id] : null;
   var headEq0=E('h');
   var comboImg=null, comboKey=null;
-  if(headEq0 && (headEq0.en|0)===0 && (!ea0 || (ea0.en|0)===0)){
+  var headEn0 = headEq0? (headEq0.en|0) : 0;
+  var armEn0 = ea0? (ea0.en|0) : 0;
+  if(headEq0 && (cls0? (armEn0===headEn0) : (headEn0===0))){
     var hT2=SLOT_TYPES[headEq0.slot];
     var headType0=(hT2 && hT2[headEq0.tn])? hT2[headEq0.tn].id : null;
     if(headType0){
-      comboKey='hero_'+(cls0||'bare')+'_'+headType0;
+      var elemId0=(ELEM[headEn0]||ELEM[0]).id;
+      comboKey='hero_'+(cls0||'bare')+'_'+headType0+(headEn0===0? '' : ('_'+elemId0));
       comboImg=artOf(comboKey);
     }
   }
