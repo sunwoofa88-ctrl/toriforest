@@ -9723,6 +9723,19 @@ var MOB_CACHE={}, MOB_ORDER=[], MOB_CAP=20;
 var ART_SRC = (typeof ART_DATA!=='undefined')? ART_DATA : {};
 var ART_IMG = {};
 var ART_N = 0, ART_LOADED = 0;
+/* 2026-08-31 : 시작 화면(#tapstart)이 뒤에 깔린 캔버스(숲/던전 월드가 이미 그려지고
+   있음)를 반투명 그라데이션으로만 덮고 있어서, 게임을 켜자마자 '던전'이 먼저 보인다는
+   제보(사용자: "시작화면이 던전이다. 로비로 바꿔라"). 오두막 쉼터 배경 그림이 있으면
+   그걸로 확실히 덮어서 시작 화면부터 아늑한 로비처럼 보이게 한다. 그림이 없으면(폴백)
+   기존 반투명 그라데이션만 남아 지금까지와 동일하게 동작한다. */
+if(ART_SRC['village_bg']){
+  var _ts=document.getElementById('tapstart');
+  if(_ts) _ts.style.backgroundImage =
+    'linear-gradient(180deg,rgba(18,44,26,.30),rgba(18,44,26,.62)),'+
+    'url('+JSON.stringify(ART_SRC['village_bg'])+')';
+  _ts&&(_ts.style.backgroundSize='cover');
+  _ts&&(_ts.style.backgroundPosition='center');
+}
 /* ══════════════════════════════════════════════════════════════════════
    버튼 그림 AI 교체
    ----------------------------------------------------------------------
