@@ -7719,6 +7719,8 @@ var ARM_ICON_HUE = { light:16, plate:215, mage:218, scale:102, royal:32, dark:29
 /* 착용 레이어는 원본 아이콘에서 만들었으므로 색상각도 원본 것을 쓴다 */
 var WEAR_HUE_SRC = { hw_cap:'eq_cap', hw_helm:'eq_helm', hw_horn:'eq_horn',
                      hw_hood:'eq_hood', hw_mask:'eq_mask', hw_crown:'eq_crown',
+                     hwbare_cap:'eq_cap', hwbare_helm:'eq_helm', hwbare_horn:'eq_horn',
+                     hwbare_hood:'eq_hood', hwbare_mask:'eq_mask', hwbare_crown:'eq_crown',
                      bw_cape:'eq_cape', fw_boots:'eq_boots' };
 var WEAR_HUE = {};
 
@@ -9780,6 +9782,23 @@ function artCanvas(im, px){
   g.imageSmoothingQuality='high';
   var f=ART_FIT, w=px*f, h=px*f;
   g.drawImage(im, (px-w)*0.5, px*BASE_F*(1-f), w, h);
+  return c;
+}
+/* ★ 2026-08-31 실측 발견·수정 — heroW_<갑옷계열>.webp, hero_<계열|bare>_<투구>.webp
+   (제미나이 조합 그림)는 원본 그림이 아니라 이미 목표 프레임(heroW_light.webp
+   실측 bbox x:34~156,y:3~178, 192×192 기준)에 맞춰 다 그려진 "완성된" 그림이다.
+   artCanvas()로 이 그림들을 또 0.72배 축소·재배치하면(artCanvas는 "여백 넉넉한
+   원본"을 프레임에 맞추는 함수라 이미 맞춰진 그림엔 이중 보정이 된다) 머리가
+   작아지고 아래로 밀려서, 같은 프레임 좌표를 그대로 신뢰하는 투구 오버레이
+   (hw_cap 등, stamp()가 0,0,W2,H2로 그대로 겹침)와 정렬이 깨진다 — 갑옷
+   착용(1단계 wImg) 및 AI 조합 그림(0단계 usedCombo) 양쪽 다 이 버그로 투구가
+   허공에 뜨는 걸 실측 확인(tests/t_cap_isolate.js, plate+helm/bare+cap 재현).
+   이미 완성된 그림은 축소하지 말고 캔버스 크기 그대로 1:1로 그린다 —
+   hw_* 오버레이가 쓰는 것과 같은 좌표계를 그대로 공유하게 된다. */
+function artFill(im, px){
+  var c=nc(px,px), g=c.getContext('2d');
+  g.imageSmoothingQuality='high';
+  g.drawImage(im, 0, 0, px, px);
   return c;
 }
 function ensureMob(key){
@@ -13901,7 +13920,17 @@ function fxShock(x,y,r,col,life){
      · 일반 타격 : 2프레임(0.033초) — 타격은 느껴지되 흐름이 안 끊긴다
      · 큰 타격   : 3프레임(0.050초) — 치명타·처치·보스 (Celeste 원값) */
 var HITSTOP_MIN=0.033, HITSTOP_BIG=0.050;
-function hitStop(t){ t=Math.max(t||0, HITSTOP_MIN); if(G.slow<t) G.slow=t; }
+/* ★★ 2026-08-31 강화(+N) 연동 — gdquest "히트스톱은 손맛의 핵심" 원칙
+   (research_skill_vfx_2026-08-31.md 2절). 모든 hitStop() 호출이 여길 거치므로
+   여기 한 곳에서만 무기 강화에 비례한 아주 작은 보너스(최대 +10ms)를 더한다 —
+   호출부(스킬마다 제각각인 기존 값)는 그대로 두고 위에 살짝 얹는 방식이라
+   기존 손맛 튜닝을 깨지 않는다. */
+function hitStop(t){
+  t=Math.max(t||0, HITSTOP_MIN);
+  var _pl=(S.eqW && EQUIP[S.eqW] && eqOwned(S.eqW))? eqPlus(S.eqW):0;
+  t += Math.min(1,_pl/15)*0.01;
+  if(G.slow<t) G.slow=t;
+}
 function hitStopBig(t){ t=Math.max(t||0, HITSTOP_BIG); if(G.slow<t) G.slow=t; }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -14004,38 +14033,100 @@ function fxRise(x,y,ang,col,n,spread,kind,sz,step){
     })(i);
   }
 }
-/* 무기를 휘두른 '궤적' : 잔상 2겹을 뒤에 깔아 속도감을 만든다 */
+/* ★★ 2026-08-31 원소별 "모양" 차별화 (research_skill_vfx_2026-08-31.md 권고 반영) —
+   지금까지는 전 원소가 색만 다르고 파편 모양은 전부 똑같은 마름모였다(vfxapprentice
+   6원칙 중 "셰이프 랭귀지" 미적용 상태). 이미 있는 원소 전용 스프라이트(불꽃/얼음/
+   잎날/연기)를 11개 원소를 5계열로 묶어 재사용한다 — 새 그림을 새로 안 그려도
+   되므로 회귀 위험이 낮다("절대규칙 6번: 추측 금지"에 맞춰 실제 존재하는 스프라이트만
+   매핑, 없는 걸 상상해서 쓰지 않는다). */
+var ELEM_FAMILY={ fire:'flame', pumpkin:'flame',
+                   ice:'frost', wind:'frost', water:'frost',
+                   leaf:'nature', stone:'nature',
+                   light:'radiant', star:'radiant', acorn:'radiant',
+                   shade:'shadow' };
+function elemFamilyOf(en){
+  var e=ELEM[en|0]; var fam=e? ELEM_FAMILY[e.id] : null; return fam||'radiant';
+}
+function elemFxSpr(en){
+  var fam=elemFamilyOf(en);
+  if(fam==='flame')  return SPR.fx.flame;
+  if(fam==='frost')  return SPR.fx.ice;
+  if(fam==='nature') return SPR.fx.leaf;
+  if(fam==='shadow') return SPR.fx.smokeP;
+  return SPR.fx.spark2||SPR.fx.spark;  /* radiant */
+}
+/* 무기를 휘두른 '궤적' : 잔상 2겹을 뒤에 깔아 속도감을 만든다
+   ★★ 2026-08-31 강화(+N) 연동 — 사용자 요구: "무기별 스킬/기본공격 이펙트도
+   강화 단계와 연관성 있게". 지금 낀 무기의 +단계(eqPlus(S.eqW))를 여기서
+   직접 읽어 조각 수·섬광 크기·잔불티 같은 '화려함'을 단계적으로 키운다.
+   호출부(수십 곳의 스킬 연출)를 전부 고치는 대신 이 한 곳에서만 처리한다 —
+   모든 베기 궤적이 여길 거치므로 무기를 바꾸든 스킬을 바꾸든 항상 반영된다.
+   저사양 기기 보호를 위해 추가 연출은 전부 QUALITY 게이트 밑에 둔다. */
 function fxSlashArc(x,y,ang,r,col,heavy,extra){
   if(extra && QUALITY<2) return null;   /* 잔상은 여유 있을 때만 */
+  var _wE=(S.eqW && EQUIP[S.eqW] && eqOwned(S.eqW))? EQUIP[S.eqW] : null;
+  var _pl=_wE? eqPlus(S.eqW) : 0;
+  var _pt=Math.min(1,_pl/15);
+  var _esp=_wE? elemFxSpr(_wE.en) : null;
   /* AI로 그린 초승달 베기를 본 궤적에만 한 겹 얹는다 (잔상에는 안 얹는다 — 겹치면 지저분하다) */
   /* ★ 초록 초승달 : 화면을 크게 덮어 A9+ 에서 부담이 됐다 → 절반으로 (×2 제거) */
   if(!extra) fxArt('fx_slash', x+Math.cos(ang)*r*0.34, y+Math.sin(ang)*r*0.26,
-                   r*1.55*ATK_FXS, 0.20, 0, ang+1.5708, 0.7);
+                   r*(1.55+_pt*0.16)*ATK_FXS, 0.20, 0, ang+1.5708, 0.7);
   /* ★ 화려함은 '크기'가 아니라 '조각과 반짝임'으로 낸다 (벤치마킹 R6 : 진행방향 파편).
-     작은 조각은 칠하는 픽셀이 초승달의 1/60 이라 프레임에 사실상 영향이 없다. */
+     작은 조각은 칠하는 픽셀이 초승달의 1/60 이라 프레임에 사실상 영향이 없다.
+     강화가 높을수록 조각이 조금 더 많고 크게 튄다(성장 체감, 카드/인벤 강화
+     오라와 같은 방향의 연출). */
   if(!extra && QUALITY>=1){
-    var _sn = (QUALITY>=2)? 7 : 4;
+    var _sn = (QUALITY>=2)? (7+Math.round(_pt*5)) : 4;
+    /* ★ 2026-08-31 — 파편 모양도 원소별로. 색이 들어가는 2/3은 원소 계열 모양(_esp),
+       흰색 1/3은 기존 마름모(SPR.fx.shard) 그대로 둬서 "날카로운 흰 강조선" 느낌은
+       유지한다(9973줄 슬래시 벤치마킹과 같은 원칙 — 순백은 강조용, 면적은 색이 채운다).
+       같은 개수를 그대로 교체하는 것이라 저강화(+0~+7) 구간도 화면이 더 복잡해지지
+       않으면서 원소가 바로 드러난다. */
     for(var _i=0;_i<_sn;_i++){
       var _t=(_i+0.5)/_sn, _a=ang-0.62+1.24*_t;          /* 궤적을 따라 흩어진다 */
       var _rr=r*(0.72+0.30*((_i*7919)%100)/100);
       var _sx=x+Math.cos(_a)*_rr, _sy=y+Math.sin(_a)*_rr*0.78;
       var _vv=170+((_i*104729)%100)/100*190;
-      var _q=pt(SPR.fx.shard, _sx, _sy, Math.cos(_a)*_vv, Math.sin(_a)*_vv*0.7,
-                0.16+0.10*((_i*31)%7)/7, (7+((_i*13)%6))*SC, _i%3? col : '#FFFFFF',
+      var _colored=_i%3;
+      var _sprI=(_colored && _esp)? _esp : SPR.fx.shard;
+      var _q=pt(_sprI, _sx, _sy, Math.cos(_a)*_vv, Math.sin(_a)*_vv*0.7,
+                0.16+0.10*((_i*31)%7)/7, (7+((_i*13)%6)+_pt*3)*SC, _colored? col : '#FFFFFF',
                 1, 260, 6.5, -0.4);
       if(_q) _q.rot=_a+1.5708;
     }
-    /* 칼끝에 아주 작은 흰 섬광 하나 — '탁' 하고 끊기는 맛 */
+    /* 칼끝에 아주 작은 흰 섬광 하나 — '탁' 하고 끊기는 맛. 강화가 높으면 더 크고 밝다 */
     pt(SPR.fx.flash, x+Math.cos(ang)*r*0.86, y+Math.sin(ang)*r*0.66, 0,0,
-       0.10, 26*SC*ATK_FXS, '#FFFFFF', 1, 0, 0, 0.9);
+       0.10, (26+_pt*14)*SC*ATK_FXS, '#FFFFFF', 1, 0, 0, 0.9);
+    /* +8부터 : 칼끝을 따라 무기 원소 계열 모양의 잔불티가 따라붙는다(장비함 강화
+       오라의 '불꽃 깃털' 단계와 같은 문턱을 재사용 — 아이콘·실전 이펙트가 같은
+       느낌). 색만이 아니라 모양도 원소별로 다르다 — 불꽃/서리/잎날/반짝임/연기. */
+    if(_pl>=8 && _esp){
+      var _en=(QUALITY>=2)? 3 : 2;
+      for(var _j=0;_j<_en;_j++){
+        var _ja=ang+(Math.random()-0.5)*0.9, _jr=r*(0.55+Math.random()*0.42);
+        var _q2=pt(_esp, x+Math.cos(_ja)*_jr, y+Math.sin(_ja)*_jr*0.78,
+           Math.cos(_ja)*60, Math.sin(_ja)*60-40, 0.24+_pt*0.10,
+           (9+_pt*7)*SC, col, 1, 0, 0, 0.85);
+        if(_q2) _q2.rot=_ja+1.5708;
+      }
+    }
+    /* +12부터 : 타격 순간 무기 원소 계열 모양의 큼직한 플레어 한 장 — "이 무기는
+       진짜 세다"는 걸 순간적으로 각인시킨다(카드 강화 오라의 번개 단계와 같은
+       문턱). 프레임당 1장뿐이라(잔상 extra엔 안 붙음) 비용은 낮다. */
+    if(_pl>=12 && _esp){
+      var _fq=pt(_esp, x+Math.cos(ang)*r*0.62, y+Math.sin(ang)*r*0.48, 0,0,
+                 0.20+_pt*0.08, (30+_pt*16)*SC, col, 1, 0, 0, 0.55);
+      if(_fq) _fq.rot=ang;
+    }
   }
   var _nocore = extra?1:0;
   /* ★ 밑칠 : 밝은 숲 배경 위에서는 가산합성만으로는 무조건 하얗게 뜬다.
        아래에 '진한 색 실루엣'을 일반합성으로 깔아 줘야 색이 살아난다.
        (레퍼런스 이펙트들이 색이 진한 이유가 이것 — 배경과 값 차이를 만든다) */
   if(!extra && QUALITY>=1){
-    var ud=pt(SPR.fx.crescent, x, y, 0,0, (heavy?0.26:0.21), r*2.06*ATK_FXS,
-              dark(col,.46), 0, 0, 0, 0.24);
+    var ud=pt(SPR.fx.crescent, x, y, 0,0, (heavy?0.26:0.21), r*(2.06+_pt*0.20)*ATK_FXS,
+              dark(col,.46), 0, 0, 0, 0.24+_pt*0.08);
     if(ud){ ud.rot=ang; ud.fade=0.52; }
   }
   var sl=take(PR);
@@ -14152,6 +14243,32 @@ function skillCastFX(sig, col, rng, ang, slot){
      내가 누른 스킬이므로 예비동작은 짧게(80~150ms) — 길면 조작이 굼떠 보인다. */
   var ANT=[0, 90, 70, 150, 110, 170][slot] || 0;
   if(ANT>0) fxGather(hx0, hy0, col, rng*0.30, ANT/1000, slot===3?13:9);
+
+  /* ★★ 2026-08-31 강화(+N)·원소 셰이프 — 사용자 요구: "스킬 이펙트도 무기별로
+     연관성 있게". `fxSlashArc`는 근접 베기 궤적에만 붙는다 — 지팡이(원거리)·
+     망치(투척) 등 다른 계열 스킬은 전부 여길 거치므로, 스킬 종류에 상관없이
+     여기 한 곳에서 "이 무기가 강화돼 있다"는 걸 원소 모양으로 보여준다.
+     캐스팅 위치(손 끝)에서 살짝 배어나오는 정도로 절제 — 각 스킬 고유 연출을
+     가리면 안 된다. */
+  if(QUALITY>=1){
+    var _swE=(S.eqW && EQUIP[S.eqW] && eqOwned(S.eqW))? EQUIP[S.eqW] : null;
+    if(_swE){
+      var _spl=eqPlus(S.eqW), _spt=Math.min(1,_spl/15);
+      if(_spl>=8){
+        var _sesp=elemFxSpr(_swE.en);
+        if(_sesp){
+          var _sn2=(QUALITY>=2)? 3 : 2;
+          for(var _si=0;_si<_sn2;_si++){
+            var _sa=Math.random()*6.2832, _sr=10+Math.random()*16;
+            var _sq=pt(_sesp, hx0+Math.cos(_sa)*_sr, hy0+Math.sin(_sa)*_sr*0.7,
+                       Math.cos(_sa)*30, Math.sin(_sa)*30-30, 0.22+_spt*0.10,
+                       (8+_spt*6)*SC, col, 1, 0, 0, 0.8);
+            if(_sq) _sq.rot=_sa;
+          }
+        }
+      }
+    }
+  }
 
   later(ANT, function(){
   if(sig==='slashH'){                       /* 가로로 한 번 크게 벤다 */
@@ -19771,12 +19888,47 @@ function heroGeared(base, ar){
   function E(k){ var id=(typeof eqAt==='function')? eqAt(k):null; return id? EQUIP[id]:null; }
   function Y(v){ return oy+sz*v; }
 
+  /* ══ 0) 절대규칙 8번 — AI 사전제작 "이미 착용한 전신" 조합 그림 우선 사용 ══
+     좌표 오버레이(mkwear.py)는 구조적 한계가 있다고 실측 확인(2026-08-31,
+     research_equip_rendering.md). 그래서 갑옷클래스×투구타입 조합별로
+     제미나이가 그린 전신 그림이 준비돼 있으면 그걸 통째로 쓰고, 없는 조합만
+     기존 오버레이 방식으로 폴백한다(전체 조합을 한 번에 다 못 그리므로
+     과도기 동안 두 방식이 공존).
+     · 네이밍: art/hero_<armorClass|bare>_<headType>.webp
+       (armorClass는 ARM_CLASS 값 그대로 — light/plate/mage/scale/royal/dark 등,
+        headType은 HEAD_LAYER 키 그대로 — cap/helm/hornh/hoodh/mask/crownh)
+     · 지금은 원소색(en) 변형까지 다 그릴 수 없으므로, 장비 원소가 기본값
+       "도토리"(en===0)일 때만 사전제작 그림을 쓴다 — 다른 원소색 장비는
+       기존 색조 회전(hue-rotate) 방식이 여전히 필요하므로 오버레이로 폴백.
+     · 해당 조합 파일이 아직 없으면 artOf()가 null을 돌려주므로 자동으로
+       기존 방식(1, 1-b단계)으로 넘어간다 — 없는 조합을 참조해도 안전하다. */
+  var ea0=E('a');
+  var cls0 = ea0? ARM_CLASS[(ARM_TYPE[ea0.tn]||{}).id] : null;
+  var headEq0=E('h');
+  var comboImg=null, comboKey=null;
+  if(headEq0 && (headEq0.en|0)===0 && (!ea0 || (ea0.en|0)===0)){
+    var hT2=SLOT_TYPES[headEq0.slot];
+    var headType0=(hT2 && hT2[headEq0.tn])? hT2[headEq0.tn].id : null;
+    if(headType0){
+      comboKey='hero_'+(cls0||'bare')+'_'+headType0;
+      comboImg=artOf(comboKey);
+    }
+  }
+  var usedCombo=false;
+  if(comboImg){
+    var ncb=artFill(comboImg, W2);
+    base=ncb;
+    usedCombo=true;
+  }
+
   /* 1) 갑옷 계열 전신 그림으로 몸 교체 + 원소색(목 아래) */
-  var ea=E('a');
-  var cls = ea? ARM_CLASS[(ARM_TYPE[ea.tn]||{}).id] : null;
-  var wImg = cls? artOf('heroW_'+cls) : null;
-  if(wImg){
-    var nb=artCanvas(wImg, W2);
+  var ea=ea0;
+  var cls = cls0;
+  var wImg = (!usedCombo && cls)? artOf('heroW_'+cls) : null;
+  if(usedCombo){
+    /* 사전제작 조합 그림을 그대로 썼으니 body-swap은 건너뛴다 */
+  } else if(wImg){
+    var nb=artFill(wImg, W2);
     var nbg=nb.getContext('2d');
     nbg.imageSmoothingQuality='high';
     var tin=nc(W2,H2), tg=tin.getContext('2d');
@@ -19787,6 +19939,37 @@ function heroGeared(base, ar){
     try{ nbg.globalCompositeOperation='color'; }catch(e){ nbg.globalCompositeOperation='source-atop'; }
     nbg.globalAlpha=0.38; nbg.drawImage(tin,0,0); nbg.restore();
     base=nb;
+  } else {
+    /* ★★ 2026-08-31 맨몸(갑옷 미착용) 크기 보정 — 실측 발견·수정.
+       사용자가 실제 게임 화면에서 "맨몸일 때 캐릭터 크기가 갑옷 착용 때와
+       다르다"고 지적해서 실측했다. hero_idle 등(맨몸 원본 그림)과 heroW_*
+       (갑옷 전신 그림)는 그림 자체의 여백 비율이 달라서, 같은 목적지 크기로
+       그려도 실루엣이 차지하는 실제 화면 픽셀 비율이 다르다 — 맨몸이 가로로
+       28% 더 넓고 세로로 6% 더 짧게 나왔다(SPR.hero.idle 캔버스 픽셀 실측,
+       tests/t_size_debug2.js). 갑옷 유무로 캐릭터가 갑자기 커졌다 작아졌다
+       하면 안 되므로, 맨몸 전용 상태(hero_idle/move/blink/atk/hurt/inhale/ko
+       전부 공유하는 배치임을 실측 확인) 실루엣을 갑옷 전신 그림과 같은
+       실루엣 범위에 맞춘다. 이렇게 맞춰 두면 투구 레이어도 갑옷 착용 때와
+       같은 HEAD_LAYER 좌표를 그대로 재사용할 수 있다(별도 hwbare_* 세트가
+       필요 없어진다).
+       ★★ 2026-08-31(같은 날 재수정) — 목표 범위(_tx0.._ty1) 상수가 틀렸었다.
+       artCanvas()가 heroW_*를 이중 축소하던 버그(위 wImg 분기, artFill로
+       교체해 수정) 때문에, 이 목표 범위는 "이중 축소돼 화면에 보이던"
+       heroW_light 모습에 맞춰 실측된 값이었다 — 그 축소 버그를 고치고 나니
+       진짜 heroW_light.webp 원본 실루엣(art/heroW_light.webp 알파 bbox 직접
+       측정: x 34~156, y 3~178 / 192 기준)과 안 맞아서 투구가 다시 허공에
+       떴다(맨몸+원소투구 조합에서 재현·확인). heroW_light.webp를 직접
+       측정한 진짜 값으로 다시 잡는다. */
+    var _bx0=0.177, _bx1=0.818, _by0=0.271, _by1=0.927;   /* 맨몸 실측 범위(hero_idle 기준) */
+    var _tx0=34/192, _tx1=156/192, _ty0=3/192, _ty1=178/192;   /* 목표 범위(heroW_light.webp 알파 bbox 직접 실측) */
+    var _bsx=(_tx1-_tx0)/(_bx1-_bx0), _bsy=(_ty1-_ty0)/(_by1-_by0);
+    var _btx=_tx0*W2 - _bx0*W2*_bsx, _bty=_ty0*H2 - _by0*H2*_bsy;
+    var nb2=nc(W2,H2), nbg2=nb2.getContext('2d');
+    nbg2.imageSmoothingQuality='high';
+    nbg2.setTransform(_bsx,0,0,_bsy,_btx,_bty);
+    nbg2.drawImage(base,0,0);
+    nbg2.setTransform(1,0,0,1,0,0);
+    base=nb2;
   }
 
   /* ══ 1-b) 투구·망토·신발 — 계산 없이 그냥 겹친다 ══
@@ -19799,6 +19982,8 @@ function heroGeared(base, ar){
      망토는 몸 뒤, 신발·투구는 몸 앞. */
   var HEAD_LAYER={ cap:'hw_cap', helm:'hw_helm', hornh:'hw_horn',
                    hoodh:'hw_hood', mask:'hw_mask', crownh:'hw_crown' };
+  var HEAD_LAYER_BARE={ cap:'hwbare_cap', helm:'hwbare_helm', hornh:'hwbare_horn',
+                   hoodh:'hwbare_hood', mask:'hwbare_mask', crownh:'hwbare_crown' };
   function wearLayer(slotKey, table){
     var id=(typeof eqAt==='function')? eqAt(slotKey):null; if(!id) return null;
     var Eq=EQUIP[id]; if(!Eq) return null;
@@ -19827,16 +20012,27 @@ function heroGeared(base, ar){
      실제로 A/B 비교를 해 보니, 망토·신발을 얹으면 갑옷 6종이 서로 구분이 안 됐다.
      신발·장갑은 갑옷 전신 그림에 이미 그려져 있으므로 따로 얹으면 두 겹이 된다
      (망토 두 겹 문제와 같은 원인). 그래서 투구만 올린다. */
-  /* ★★ 투구 겹치기를 껐다.
-     hw_* 그림은 '아이콘'이라 얼굴 구멍이 없다. hw_hood 는 통짜 두건이라
-     머리에 얹으면 눈·코·입이 통째로 사라진다(사용자 화면에서 확인).
-     겹쳐 쓰려면 Mana Seed 규격처럼 '몸 그림과 완전히 같은 배치'로 그려져
-     있어야 한다 — 지금 그림은 그렇지 않다. 규격에 맞는 머리 레이어를
-     새로 그리기 전까지는 얹지 않는다. 투구는 능력치와 칸 아이콘으로만 보인다.
-     (이 파일 위쪽 주석의 조사 결론 — '장신구는 표시 포기' — 과 같은 판단) */
-  var HEAD_OVERLAY=0;
-  if(HEAD_OVERLAY){
-    var pH=wearLayer('h',HEAD_LAYER);
+  /* ★★ 투구 겹치기 — 2026-08-31 재활성화.
+     기존엔 hw_*(mkwear.py 산출물)가 실제 몸 그림의 머리 위치와 안 맞아서
+     (모자가 코 위에 얹히는 등) 꺼 뒀었다. 원인은 그림이 아니라 좌표였다 —
+     mkwear.py의 HEAD box(cx=.4325,cy=.480,w=.285,h=.300)가 실측치가 아니었다.
+     heroW_* 6종·hero_idle 계열을 픽셀로 실측(눈동자 중심·정수리·귀 끝 좌표,
+     mkwear.py 상단 주석 참고)해서 박스를 다시 잡고 mkwear.py를 재실행,
+     Python 합성 미리보기로 6종 갑옷 × 6종 투구 + 갑옷 미착용 상태까지
+     전부 육안 확인 후 확정했다.
+     ★ 원래 갑옷 착용 여부에 따라 몸 그림의 캔버스 배치(얼굴 크기·위치)가
+       달랐다 — 그래서 hw_*(착용)/hwbare_*(미착용) 두 세트를 따로 구웠었다.
+       그런데 바로 위 '맨몸 크기 보정'에서 맨몸 실루엣을 갑옷 전신 그림과
+       같은 범위로 맞춰버렸기 때문에(같은 스케일 보정을 거치므로 얼굴
+       위치도 같이 갑옷 쪽 배치에 맞게 이동한다), 이제 두 경우 모두 같은
+       HEAD_LAYER(hw_*) 좌표를 그대로 재사용해도 맞는다 — 실제로 재검증해서
+       확인했다(하나만 쓰던 hwbare_* 세트는 더 안 쓰지만 재생성 스크립트는
+       mkwear.py에 남겨 둔다). hood는 귀 끝이 살짝 삐져나올 수 있다(통짜
+       두건이 아니라 실제 투명 구멍이 있는 그림임을 확인함) — 자연스러운
+       "후드를 쓴 모습"으로 허용 범위. */
+  var HEAD_OVERLAY=1;
+  if(HEAD_OVERLAY && !usedCombo){
+    var pH=wearLayer('h', HEAD_LAYER);
     if(pH){
       var lay=nc(W2,H2), lg=lay.getContext('2d');
       lg.imageSmoothingQuality='high';

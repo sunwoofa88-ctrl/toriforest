@@ -9,13 +9,26 @@
 from PIL import Image
 import os, sys
 S=192
-HEAD=dict(cx=0.4325, cy=0.480, w=0.285, h=0.300)   # 머리+귀 (실측 x0.29~0.575 y0.33~0.63)
+# ══════════════════════════════════════════════════════════════════
+# 2026-08-31 재실측: 기존 HEAD box(cx=.4325,cy=.480,w=.285,h=.300)는
+# 실제 몸 그림(heroW_*)의 머리 위치와 전혀 안 맞았다(모자가 코 위에 얹힘).
+# heroW_* 6종을 픽셀로 실측(눈동자 중심·이마 정수리·귀 끝)해서 다시 잡았고,
+# 갑옷 미착용 상태(hero_idle 등, HEAD_OVERLAY가 적용되는 또 다른 캔버스 —
+# 얼굴이 캔버스 대부분을 채우는 완전히 다른 구도)용 박스를 별도로 추가했다.
+# 두 세트 모두 art/*.webp를 직접 픽셀 스캔해서 얻은 실측값이며, 최종 위치는
+# Python으로 합성 미리보기를 반복 렌더링해 육안 확인 후 확정했다(추측 금지).
+# ══════════════════════════════════════════════════════════════════
+HEAD=dict(cx=0.485, cy=0.22, w=0.46, h=0.42)        # heroW_* (갑옷 착용) 기준
+HEAD_BARE=dict(cx=0.43, cy=0.226, w=0.46, h=0.42)   # hero_idle 등 (갑옷 미착용) 기준
 BODY=dict(cx=0.435,  cy=0.720, w=0.300, h=0.260)   # 몸통    (실측 x0.29~0.59  y0.59~0.85)
 FEET=dict(cx=0.443,  cy=0.927, w=0.265, h=0.130)   # 발바닥선 y=0.927 (실측), 발 폭 x0.318~0.568
 
-HEAD_SPEC={'cap':('eq_cap',1.34,0.10), 'helm':('eq_helm',1.75,0.46),
-           'horn':('eq_horn',1.75,0.30), 'hood':('eq_hood',1.62,0.44),
-           'mask':('eq_mask',1.16,0.55), 'crown':('eq_crown',1.14,0.00)}
+HEAD_SPEC={'cap':('eq_cap',0.85,0.06), 'helm':('eq_helm',2.05,0.42),
+           'horn':('eq_horn',2.05,0.42), 'hood':('eq_hood',1.50,0.38),
+           'mask':('eq_mask',0.95,0.62), 'crown':('eq_crown',0.85,0.03)}
+HEAD_SPEC_BARE={'cap':('eq_cap',0.85,0.06), 'helm':('eq_helm',2.05,0.42),
+           'horn':('eq_horn',2.05,0.42), 'hood':('eq_hood',1.55,0.36),
+           'mask':('eq_mask',0.95,0.62), 'crown':('eq_crown',0.85,0.03)}
 #  ★ 망토·신발 레이어는 폐기 (A/B 비교 결과 갑옷을 가려 6종 구분이 안 됨)
 #     신발·장갑은 갑옷 전신 그림에 이미 그려져 있다.
 _CAPE_SPEC_UNUSED={'cape':('eq_cape',1.60,0.55)}           # 몸보다 넓게 = 양옆으로 보인다
@@ -60,6 +73,9 @@ def build(outdir='art'):
     for n,(k,s,v) in HEAD_SPEC.items():
         p=os.path.join(outdir,'hw_%s.webp'%n); place(k,HEAD,s,v).save(p,'WEBP',quality=92,method=6)
         made.append(('hw_'+n,os.path.getsize(p)))
+    for n,(k,s,v) in HEAD_SPEC_BARE.items():
+        p=os.path.join(outdir,'hwbare_%s.webp'%n); place(k,HEAD_BARE,s,v).save(p,'WEBP',quality=92,method=6)
+        made.append(('hwbare_'+n,os.path.getsize(p)))
     for n,(k,s,v) in {}.items():
         p=os.path.join(outdir,'bw_%s.webp'%n); place(k,BODY,s,v).save(p,'WEBP',quality=92,method=6)
         made.append(('bw_'+n,os.path.getsize(p)))
