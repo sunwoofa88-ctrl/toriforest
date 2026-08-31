@@ -9508,6 +9508,11 @@ var THEMES=[
  {bpm:108, root:'A4', scale:'major',  prog:'pop',     lead:'triangle', bass:'sine',     pad:'sine',     drum:1, seed:113}
 ];
 var BOSS_THEME={bpm:150, root:'D3', scale:'harm', prog:'epic', lead:'square', bass:'sawtooth', pad:'triangle', drum:2, seed:7};
+/* 오두막 쉼터 전용 BGM — 사용자 요청("로비 배경음악은 따뜻한 음악이어야 한다") :
+   장조(major)+부드러운 사인파(lead/bass/pad 전부 sine)+타악기 없음(drum:0)+느린 템포(84bpm)
+   로 아늑하고 따뜻한 느낌만 낸다. 다른 테마들처럼 완전히 새 멜로디 시드를 써서
+   숲 지역 테마와 겹치지 않게 한다. */
+var VILLAGE_THEME={bpm:84, root:'C4', scale:'major', prog:'gentle', lead:'sine', bass:'sine', pad:'sine', drum:0, seed:5};
 
 var NOTE_HZ={'C':261.63,'D':293.66,'E':329.63,'F':349.23,'G':392.00,'A':440.00,'B':493.88};
 function rootHz(name){
@@ -9598,12 +9603,13 @@ function musicVol(){
   try{ musGain.gain.setTargetAtTime(S&&S.sfx?0.16:0, AC.currentTime, 0.2); }catch(e){}
 }
 function musicTheme(){
+  var villageHere = (curSheet==='village');
   var bossHere=false;
-  for(var i=0;i<EN.length;i++) if(EN[i].alive&&!EN[i].dead&&EN[i].boss){ bossHere=true; break; }
-  var key = bossHere? -2 : (S? chapBiome(S.chap) : 0);
+  if(!villageHere) for(var i=0;i<EN.length;i++) if(EN[i].alive&&!EN[i].dead&&EN[i].boss){ bossHere=true; break; }
+  var key = villageHere? -3 : (bossHere? -2 : (S? chapBiome(S.chap) : 0));
   if(key!==musKey){
     musKey=key;
-    musTheme = bossHere? BOSS_THEME : THEMES[key % THEMES.length];
+    musTheme = villageHere? VILLAGE_THEME : (bossHere? BOSS_THEME : THEMES[key % THEMES.length]);
     musMel = makeMelody(musTheme.seed, musTheme.scale);
     musStep = 0;
   }
@@ -20998,7 +21004,8 @@ window.__TORI = { onBack:function(){ try{ return onBackKey(); }catch(e){ return 
   twUnlocked:twUnlocked, twReward:twReward, get TW_TOP(){return TW_TOP;},
   slashSpr:slashSpr, artOf:artOf, petSpr:petSpr, eqName:eqName, eqAffixText:eqAffixText, affixOf:affixOf, openCodexDetail:openCodexDetail, codexText:codexText, get PETS(){return PETS;}, get cam(){return cam;}, heroDollCanvas:heroDollCanvas, get ANIM(){return ANIM;}, get W_GRIP(){return W_GRIP;}, get EQ_ART_HUE(){return EQ_ART_HUE;}, get ART_SRC(){return ART_SRC;}, get ART_IMG(){return ART_IMG;},
   get EQ_ART_MAP(){return EQ_ART_MAP;}, clearEqCache:function(){ EQ_CACHE={}; EQ_ORDER.length=0; },
-  dbg:{ blocked:function(x,y,r){return blocked(x,y,r);}, moveEnt:moveEnt,
+  dbg:{ musState:function(){ musicTheme(); return {key:musKey, bpm:musTheme&&musTheme.bpm, scale:musTheme&&musTheme.scale, drum:musTheme&&musTheme.drum, curSheet:curSheet}; },
+        blocked:function(x,y,r){return blocked(x,y,r);}, moveEnt:moveEnt,
         solidAt:function(x,y){return solidAt(x,y);}, propsNear:function(x,y,r,o){return propsNear(x,y,r,o||[]);},
         prog:prog, applyProgress:applyProgress, objectiveText:objectiveText,
         uiSafe:function(){ return {t:UI_SAFE.t,b:UI_SAFE.b,l:UI_SAFE.l,r:UI_SAFE.r,W:W,H:H}; },
