@@ -19453,10 +19453,38 @@ function renderVillage(){
      (헤더바·탭·하단 닫기바·둥근 카드)을 CSS로 다 꺼두었다 — 여기서는 그 빈
      전체 화면(sheetBody, 100%) 하나에 장면을 통째로 그린다. */
   var wrap=el('div');
+  var bgArt = ART_SRC['village_bg'];
   wrap.style.cssText='position:relative;width:100%;height:100%;overflow:hidden;'+
-    'background:radial-gradient(120% 90% at 50% 18%,#6B4E30 0%,#4A3222 55%,#2C1F14 100%)';
+    (bgArt
+      ? ('background:#2C1F14 url('+JSON.stringify(bgArt)+') center/cover no-repeat')
+      : 'background:radial-gradient(120% 90% at 50% 18%,#6B4E30 0%,#4A3222 55%,#2C1F14 100%)');
 
-  wrap.innerHTML =
+  wrap.innerHTML = bgArt ? (
+    /* ══ AI 그림 배경(2026-08-31, 사용자 요청 "로비도 AI 이미지로 고급지게") ══
+       art/village_bg.webp 를 풀스크린 cover 로 깐다. 창문·랜턴·벽난로·침대·
+       바닥 등은 이제 그림 안에 이미 그려져 있으므로 CSS 도형들은 다 지우고,
+       그림 위에 놓일 벽시계 + 클릭 가능한 침대/벽난로 투명 히트존만 남긴다. */
+    /* 벽시계 - 그림의 빈 벽 부분(왼쪽 위, 침대 위쪽) 위에 겹쳐 얹는다 */
+    '<div style="position:absolute;top:20%;left:9%;width:8vh;height:8vh;max-width:50px;max-height:50px;border-radius:50%;'+
+      'background:radial-gradient(circle at 35% 30%,#FFF8E7,#EDDDB8 78%);border:5px solid #3A2717;'+
+      'box-shadow:0 0 0 2px #2C2119,0 6px 14px rgba(0,0,0,.45)">'+
+      '<div style="position:absolute;top:6%;left:50%;width:2px;height:11%;background:#3A2717;transform:translateX(-50%)"></div>'+
+      '<div style="position:absolute;bottom:6%;left:50%;width:2px;height:11%;background:#3A2717;transform:translateX(-50%)"></div>'+
+      '<div style="position:absolute;left:6%;top:50%;height:2px;width:11%;background:#3A2717;transform:translateY(-50%)"></div>'+
+      '<div style="position:absolute;right:6%;top:50%;height:2px;width:11%;background:#3A2717;transform:translateY(-50%)"></div>'+
+      '<div style="position:absolute;left:50%;top:50%;width:3px;height:25%;background:#2C1B10;border-radius:2px;'+
+        'transform-origin:bottom center;transform:translate(-50%,-100%) rotate(-60deg)"></div>'+
+      '<div style="position:absolute;left:50%;top:50%;width:2px;height:34%;background:#5C3D1F;border-radius:2px;'+
+        'transform-origin:bottom center;transform:translate(-50%,-100%) rotate(60deg)"></div>'+
+      '<div style="position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#2C1B10;transform:translate(-50%,-50%)"></div>'+
+    '</div>'+
+    /* 벽난로 히트존 - 그림 속 벽난로(오른쪽 아래) 위, 그림 자체는 투명 */
+    '<div id="vFire" style="position:absolute;right:2%;bottom:28%;width:34%;height:26%;cursor:pointer"></div>'+
+    /* 침대 히트존 - 그림 속 침대(왼쪽 아래) 위, 그림 자체는 투명 */
+    '<div id="vBed" style="position:absolute;left:0;bottom:40%;width:44%;height:22%;cursor:pointer"></div>'+
+    /* 상단 어둡게(가독성) */
+    '<div style="position:absolute;left:0;right:0;top:0;height:80px;background:linear-gradient(180deg,rgba(0,0,0,.5),transparent);pointer-events:none"></div>'
+  ) : (
     /* 바닥(나무 널) */
     '<div style="position:absolute;left:0;right:0;bottom:0;height:34%;'+
       'background:repeating-linear-gradient(90deg,#5C4229 0 30px,#513A24 30px 33px);'+
@@ -19506,7 +19534,8 @@ function renderVillage(){
     '<div style="position:absolute;bottom:8%;left:50%;transform:translateX(-50%);width:38vw;max-width:220px;height:4vh;max-height:22px;border-radius:50%;'+
       'background:#C4573F;opacity:.5;filter:blur(.3px)"></div>'+
     /* 상단 어둡게(가독성), 하단 액션바 배경용 그라데이션 */
-    '<div style="position:absolute;left:0;right:0;top:0;height:70px;background:linear-gradient(180deg,rgba(0,0,0,.45),transparent);pointer-events:none"></div>';
+    '<div style="position:absolute;left:0;right:0;top:0;height:70px;background:linear-gradient(180deg,rgba(0,0,0,.45),transparent);pointer-events:none"></div>'
+  );
   sheetBody.appendChild(wrap);
 
   /* 상단 : 장소 이름표 + 닫기(헤더바를 꺼서 직접 그린다) */
