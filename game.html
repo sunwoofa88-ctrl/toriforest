@@ -6043,7 +6043,10 @@ function drawCreature(g, sp, o){
     for(var d=0;d<dots.length;d++){ ell(g, CX+rx*dots[d][0], cy+ry*dots[d][1], rx*dots[d][2], ry*dots[d][2]*.9); so(g,'#FFF8EC',0); }
     g.restore();
   } else if(sp.hat==='leaf'){
-    g.save(); g.translate(CX+rx*.18, cy-ry*1.00); g.rotate(-.55);
+    /* 2026-08-31 사용자 제보("풀잎 모자도 삐뚤하던데") — 기울기값 -.55rad(약 -31.5도)가
+       너무 커서 비스듬히 얹은 게 아니라 '삐뚤어진' 것처럼 보였다. 살짝만 기울여서
+       자연스러운 착용감은 유지하되 눈에 띄게 기울어 보이지 않게 완화(-.55 → -.16). */
+    g.save(); g.translate(CX+rx*.18, cy-ry*1.00); g.rotate(-.16);
     g.beginPath(); g.moveTo(0,0);
     g.quadraticCurveTo(rx*.52,-ry*.34, rx*.94,-ry*.06);
     g.quadraticCurveTo(rx*.46, ry*.30, 0,0); g.closePath();
@@ -12692,8 +12695,18 @@ function refDps(){
   if(!(d>0)||!(c>0)){ d=A.dmg[0]; c=A.cd[0]; }
   /* 강화·장비는 '제곱근만큼만' 기준선에 반영한다.
      → 갖출수록 실제로 눈에 띄게 빨라지지만, 후반에 몹이 종잇장이 되지도 않는다.
-       (강화 최대치 기준 : 위력 3.8배 · 기준선 1.95배 = 체감 2배 빨라짐) */
-  var up = Math.sqrt( (1+abilPlus(a)*0.14) * (1+(eqB().atk||0)*0.55) );
+       (강화 최대치 기준 : 위력 3.8배 · 기준선 1.95배 = 체감 2배 빨라짐)
+     ★ 2026-08-31 재조정 — 사용자 제보("보스가 너무너무 약하다..두세방에 죽어버린다")로
+     확인: 기준선(refDps)이 강화·장비 공격력만 반영하고 크리티컬(장비+펫)·쿨감(장비)·
+     펫 공격속도는 전혀 반영하지 않았다. 그런 걸 갖춘 실제 캐릭터는 여기 안 잡히는
+     전투력이 그만큼 더 있으니, 보스 체력이 '기준 dps' 대비로만 맞춰져 있으면
+     실제로는 훨씬 빨리 죽는다 — 캐릭터 전투력에 비례하도록 같은 제곱근 감쇠로
+     반영 범위를 넓힌다(기어 없는 캐릭터는 전부 배율 1이라 그대로, 변화 없음). */
+  var eb=eqB(), pb=petBonus();
+  var critMul = 1 + Math.min(1,(eb.crit||0)+(pb.crit||0)) * 0.6;   /* 기대 크리티컬 피해 배율 */
+  var cdMul   = 1/Math.max(0.35, 1-(eb.cdr||0));                    /* 쿨감 → 초당 시전 횟수 증가 */
+  var spdMul  = 1 + (pb.atkSpd||0);                                 /* 펫 공격속도 보너스 */
+  var up = Math.sqrt( (1+abilPlus(a)*0.14) * (1+(eb.atk||0)*0.55) * critMul * cdMul * spdMul );
   return (d/c) * (10 + (S.lv-1)*1.9)/10 * up;
 }
 function refHp(){ return 100 + (S.lv-1)*15; }   /* 장비 보너스 제외 기준 체력 */
@@ -13890,7 +13903,13 @@ function drawHandOver(g2, x, y, sz, ang, hx0, hy0, sw, sh, wsc){
   g2.restore();
 }
 var HAND_X=HAND_BARE[0], HAND_Y=HAND_BARE[1];
-var ATK_FXS=0.50;
+/* 2026-08-31 사용자 요청("스킬도 좀 더 이펙트 화려하게 해줘")로 0.50→0.64 상향.
+   더 크게 올리지 않은 이유: 이 상수는 근접뿐 아니라 nova/orbit/laser 등 원소 스킬까지
+   전부 공유하는 전역 배율이라(13885줄 위 문단 참고), 몬스터 여럿과 동시 전투 시
+   화면이 이펙트로 뒤덮이는 걸 막던 안전장치였다(검 계열은 이미 로컬 배율 VSW로
+   별도 확대돼 있어 두 배율이 곱해짐 — 14580줄 참고). 전역을 과하게 올리면 그 검
+   전용 확대와 겹쳐 오히려 난잡해진다. */
+var ATK_FXS=0.64;
 /* 방어구 → 전신 그림 계열 (6종). 새로 늘린 28종도 전부 배정해야
    '입은 모습' 이 나온다 — 안 하면 새 방어구를 입어도 주인공이 그대로다. */
 var ARM_CLASS = { vest:'light', hood:'light',
@@ -15056,9 +15075,10 @@ function updatePlayer(dt){
     moveEnt(P,(P.dashX-P.x)*k2,(P.dashY-P.y)*k2,PLAYER_R*SC,dt);
     if(Math.random()<0.6) pt(SPR.fx.puff,P.x,P.y-P.size*0.4,0,0,0.18,P.size*0.5,'#FFFFFF',1,0,0,-0.7);
   } else {
-    /* 이동속도 : 205 → 308 → 462 로 올렸다가, 아이가 조작하기엔 너무 빨라 -20% (462 → 370).
+    /* 이동속도 : 205 → 308 → 462 → -20%(370) → 2026-08-31 사용자 재요청("캐릭터 이동속도
+       너무 빠르다 -20% 해줘") 으로 한 번 더 -20% (370 → 296).
        장비·펫 보너스는 그대로 곱해진다. */
-    var sp=370*SC*(1+petBonus().moveSpd+eqB().moveSpd);
+    var sp=296*SC*(1+petBonus().moveSpd+eqB().moveSpd);
     var mvx=P.vx*sp, mvy=P.vy*sp*0.82;
     if(mvx||mvy) moveEnt(P,mvx*dt,mvy*dt,PLAYER_R*SC,dt);
     else unstick(P,PLAYER_R*SC,dt);
@@ -16777,13 +16797,28 @@ function drawHero(px,py){
     swing = Math.sin(P.bob*0.8)*0.05;
   } else if(P.castS===1){                    /* 회전 : 주먹을 축으로 한 바퀴 */
     swing = -0.55 + kk9*6.2832;
-  } else if(P.castS===2){                    /* 찌르기 : 각도 고정 + 자기 축으로 살짝 전진 */
-    var th9 = Math.sin(Math.min(1,kk9)*3.14159);
+  } else if(P.castS===2){                    /* 찌르기 : 뒤로 당겼다 크게 내지른다
+       ★ 2026-08-31 재수정 — 사용자 제보("검은 던지는게 아니고 잡고 베기 위해 휘두르는것")
+       로 실측(연타 버스트 스크린샷) 해보니, 옛 코드는 swing 각도를 kk9 내내 0.34로
+       고정해 두고 자기 축 방향으로 0.14sz만 살짝 밀어서 — 화면상 각도가 전혀
+       안 바뀌고 위치도 거의 안 움직여 '그냥 붙잡고 있는' 것처럼 보였다(찌르는
+       느낌이 아예 없음). 당기는 예비동작(pull-back)을 추가하고 내지르는 거리를
+       0.14 → 0.46sz(당김 -0.12 → 내지름 +0.34)로 크게 키워, 빠르게 뻗고
+       천천히 멎는 완화곡선(e1=1-(1-w)^3)으로 실제 '찌르기'로 읽히게 한다. */
+    var AN2=0.16, ext2;
+    if(kk9<AN2){
+      var w02=kk9/AN2;
+      ext2 = -0.12*w02;                       /* 뒤로 당긴다 */
+    } else {
+      var w12=(kk9-AN2)/(1-AN2);
+      var e12=1-Math.pow(1-Math.min(1,w12),3); /* 빠르게 뻗고 천천히 멎는다 */
+      ext2 = -0.12 + e12*0.46;                 /* -0.12 → 0.34 : 크게 내지름 */
+    }
     swing = 0.34;
     var _a2 = (typeof W_HOLD!=='undefined'? W_HOLD : -2.05) + swing;
-    wOffX = sz*HX + Math.cos(_a2)*sz*0.14*th9;
-    wOffY = sz*HY + Math.sin(_a2)*sz*0.14*th9;
-    wScale = 1 + th9*0.10;
+    wOffX = sz*HX + Math.cos(_a2)*sz*ext2;
+    wOffY = sz*HY + Math.sin(_a2)*sz*ext2;
+    wScale = 1 + Math.max(0,ext2)*0.22;
   } else if(P.castS===3){                    /* 내리찍기 : 위로 크게 들었다 내려친다 */
     var e9 = 1-Math.pow(1-Math.min(1,kk9),3);
     /* 절대각 기준 : 위(-1.90) 로 크게 들었다가 왼쪽 아래(-3.70) 로 내려친다.
@@ -16792,21 +16827,46 @@ function drawHero(px,py){
     wScale = 1.16;
   } else {                                   /* 기본 · 1번 : 빠른 가로베기(왼쪽 위 → 아래) */
     /* ══ 예비동작(anticipation) + 스윙 속도 곡선 ═══════════════════════════
-       2026-08-31 재수정 — 실측(kk9 를 0→1 로 스크럽하며 스크린샷 비교) 결과
-       옛 감속 전용 곡선은 치는 순간(w1=0) 최고 속도로 시작해 그 뒤 계속 느려지기만
-       해서, 스윙 뒷 65% 구간이 거의 멈춰 보였다. 실제 검격 애니메이션 레퍼런스
-       조사 결론(최고 속도는 호의 60~70% 지점) 에 맞춰 가속→정점→감속 삼각형
-       속도 곡선(정점 PEAK=0.65)을 적분한 매끄러운 위치 곡선으로 교체했다. */
-    var AN=0.18;
+       ★ 2026-08-31 재수정 — 사용자 제보("칼 휘두르는게 저게 맞냐?? 완전 오류")로
+       실측(kk9 를 0→1 로 직접 스크럽하며 13장 스크린샷 비교, /tmp/sword_scrub_grid.png)
+       한 결과, 옛 감속 전용 곡선 e1=1-(1-w1)^2.2 은 '치는 순간(w1=0)'에 이미 최고
+       각속도(미분값 2.2)로 시작해서 그 뒤로는 계속 느려지기만 했다 — kk9 0.35 부터
+       1.0 까지(전체 스윙의 뒷 65%, 실제 사람 눈에 보이는 대부분의 구간) 칼이 거의
+       제자리에 멈춰 있는 것처럼 보였다(스크린샷 6~13번이 사실상 같은 자세).
+       실제 액션 게임 검격 레퍼런스 조사(mocaponline.com 'Sword Melee Animation
+       Guide') 결론 : "스윙의 최고 속도 지점은 끝이 아니라 호 전체의 약 60~70%
+       지점이어야 한다" — 즉 감속 전용이 아니라 '가속 → 정점 → 감속'의 삼각형
+       속도 곡선이어야 한다. 삼각형 속도 프로파일(정점 PEAK=0.65)을 적분해 만든
+       매끄러운(양쪽 접점에서 기울기가 이어지는) 위치 곡선을 쓴다 — 그래서 칼이
+       초반엔 천천히 붙었다가 스윙 중반~후반까지 계속 눈에 띄게 움직이고, 끝에서만
+       부드럽게 멎는다(무게감 있는 정지). tests/t_sword_swing_scrub.js 로 재검증. */
+    var AN=0.18, arcT;
     if(kk9<AN){
       var w0=kk9/AN;
       swing = 0.15 + w0*0.42;                 /* 뒤로 뺀다 */
+      arcT = w0*0.30;                          /* 예비동작에도 살짝 당겨 준비한다 */
     } else {
       var w1=(kk9-AN)/(1-AN);
       var PK=0.65;                             /* 최고 각속도 지점 = 호의 65% */
       var e1 = (w1<=PK)? (w1*w1)/PK : 1-((1-w1)*(1-w1))/(1-PK);
       swing = 0.57 - e1*2.02;
+      arcT = Math.sin(Math.PI*Math.min(1,w1));  /* 0(시작) → 1(중간, 팔이 뻗음) → 0(끝, 손으로 복귀) */
     }
+    /* ★ 2026-08-31 재수정 — 사용자 제보("검든 자세가 저게 맞냐...팔꿈치가 축이 되어
+       위에서 아래로 내려치는게 기본 원리 아니냐")로 실측(연타 버스트 스크린샷,
+       /tmp/burst_grid.png) 해보니, 각도만 손목 기준으로 바뀌고 위치는 주먹에
+       완전 고정이라 — 몸통 바로 옆에서 손목만 까딱이는 것처럼 보였다(팔이
+       뻗어나가는 큰 동작이 안 느껴짐). GDQuest 'Juicy Attack' 가이드의 원칙
+       (예비동작으로 당겼다가 크게 뻗어나가는 동작이 무게감을 만든다)을 참고해,
+       스윙 각도(swing)는 그대로 두고 — 팔꿈치가 펴지듯 손 위치 자체도 앞·아래로
+       크게 뻗었다가(REACH 0.20sz) 스윙 끝에 다시 주먹 위치로 돌아오게 한다.
+       손 그림(drawHandOver)도 같은 wOffX/Y를 쓰므로 손과 무기가 같이 뻗어나가
+       '팔을 뻗어 내려베는' 동작으로 읽힌다 — 몸 그림의 팔은 고정이라도, 뻗는
+       범위가 손 크기 안쪽이라 부자연스럽게 붕 뜨지 않는다(실측 확인). */
+    var REACH=0.20;
+    wOffX = sz*HX + arcT*sz*REACH;
+    wOffY = sz*HY + arcT*sz*REACH*0.55;
+    wScale = 1 + arcT*0.08;
   }
   /* ★ 방향별 그리는 순서 표 (HANDOVER.md 'B. 방향별 그리는 순서 표') :
        아래(정면)를 볼 땐 무기가 몸 앞, 위(뒷모습)를 볼 땐 무기가 몸 뒤여야
@@ -17828,8 +17888,231 @@ var SHEETS={
   make: {title:'만들기',    tabs:['재료 합치기','능력 진화','능력 세게']},
   book: {title:'도감',      tabs:['몬스터','재료','능력','수첩']},
   map:  {title:'모험 지도', tabs:['숲 지도','별빛의 탑']},
-  village: {title:'오두막 쉼터', tabs:null}
+  village: {title:'오두막 쉼터', tabs:null},
+  decor: {title:'🛋️ 쉼터 꾸미기', tabs:null}
 };
+/* ══════════════════════ 쉼터 꾸미기 (2026-08-31 신규) ══════════════════════
+   사용자 요청 : "재료 모아서 쉼터 꾸미기 기능도 추가하자... 목표 달성의 성취감을
+   느끼게 해주자" + "쉼터 상점을 추가해라!" + "캐릭터 크기를 고려해서" +
+   "드래그 드롭 방식으로 자유롭게 되게 하되, 겹치기는 안되게".
+   ★ 범위 note: 새 재화·드롭 테이블을 새로 설계하면 검증 시간이 오래 걸려
+   기존 공용 재화(도토리 S.acorn)를 그대로 재사용했다 — 아이가 이미 알고 있는
+   재화라 설명 없이 바로 이해된다. 아이콘은 지금은 이모지(빠르고 확실히
+   동작)로 채우고, 프리미엄 AI 그림은 다음 세션에서 이 자리(DECOR_ITEMS[].ic)만
+   webp 키로 바꿔 끼우면 되도록 구조를 분리해 둔다. */
+var DECOR_ITEMS={
+  d_plant:  {n:'작은 화분',     ic:'🪴', cost:120},
+  d_frame:  {n:'추억 액자',     ic:'🖼️', cost:150},
+  d_books:  {n:'책 더미',       ic:'📚', cost:100},
+  d_candle: {n:'따뜻한 초',     ic:'🕯️', cost:90},
+  d_bear:   {n:'곰인형',        ic:'🧸', cost:200},
+  d_wreath: {n:'잎사귀 리스',   ic:'🍃', cost:130},
+  d_lantern:{n:'종이 등',       ic:'🏮', cost:110},
+  d_basket: {n:'도토리 바구니', ic:'🧺', cost:160}
+};
+/* 2026-08-31 사용자 요청("꾸미기 아이템들 종류 100가지로 늘려라. 구매할 수 있는
+   재화 모으는것도 적절한 난이도로 밸런스 설정") — 위 8종에 92종을 더해 100종을
+   채운다. 비용은 4단계로 나눠 뒤로 갈수록 확실히 비싸지게(=모으는 재미) 잡았다 —
+   17716줄 스테이지 클리어 보상 공식(acorn = 45*(p+1)^1.62)을 기준으로, 1단계는
+   첫 몇 판이면 사고 4단계는 여러 판을 모아야 살 만큼 벌어지도록 실측 계산했다. */
+(function(){
+  function tierCost(i){
+    if(i<23) return 80 + i*4;                    /* 1단계 : 80~168 (금방 산다) */
+    if(i<46) return 220 + (i-23)*14;              /* 2단계 : 220~542 */
+    if(i<69) return 620 + (i-46)*26;              /* 3단계 : 620~1218 */
+    return 1300 + (i-69)*55;                      /* 4단계 : 1300~2565 (모아야 산다) */
+  }
+  var MORE=[
+    /* 화분·식물 (12) */
+    ['d_p01','선인장 화분','🌵'],['d_p02','다육이 화분','🪴'],['d_p03','라벤더 화분','💐'],
+    ['d_p04','해바라기 화분','🌻'],['d_p05','튤립 화분','🌷'],['d_p06','장미 화분','🌹'],
+    ['d_p07','클로버 화분','🍀'],['d_p08','대나무 화분','🎋'],['d_p09','담쟁이덩굴','🌱'],
+    ['d_p10','국화 화분','🏵️'],['d_p11','매화나무 분재','🌸'],['d_p12','단풍나무 분재','🍁'],
+    /* 벽장식 (8) */
+    ['d_w01','별자리 그림 액자','🖼️'],['d_w02','옛 지도 액자','🗺️'],['d_w03','나무 거울','🪞'],
+    ['d_w04','자수 액자','🧵'],['d_w05','새 둥지 장식','🪺'],['d_w06','나비 표본 액자','🦋'],
+    ['d_w07','벽걸이 태피스트리','🎨'],['d_w08','옛 편지 액자','📜'],
+    /* 조명 (8) */
+    ['d_l01','반딧불 램프','✨'],['d_l02','별빛 무드등','🌟'],['d_l03','촛불 세트','🕯️'],
+    ['d_l04','은은한 크리스탈 램프','🔆'],['d_l05','은하수 무드등','🌌'],['d_l06','장작불 랜턴','🏮'],
+    ['d_l07','유리병 반딧불','🫙'],['d_l08','오로라 조명','🌈'],
+    /* 계절·이벤트 (12) */
+    ['d_s01','호박 등불','🎃'],['d_s02','유령 장식','👻'],['d_s03','크리스마스 트리','🎄'],
+    ['d_s04','산타 모자 장식','🎅'],['d_s05','눈사람 장식','☃️'],['d_s06','폭죽 장식','🎆'],
+    ['d_s07','한가위 보름달','🌕'],['d_s08','청사초롱','🏮'],['d_s09','새해 복주머니','🧧'],
+    ['d_s10','벚꽃가지 장식','🌸'],['d_s11','단풍 바구니','🍁'],['d_s12','크리스마스 양말','🧦'],
+    /* 아늑한 직물 (10) */
+    ['d_t01','폭신한 러그','🧶'],['d_t02','뜨개 담요','🧣'],['d_t03','자수 방석','🪡'],
+    ['d_t04','알록달록 쿠션','🛋️'],['d_t05','털실 뭉치 바구니','🧶'],['d_t06','창가 커튼','🪟'],
+    ['d_t07','그물 해먹','🪢'],['d_t08','폭신한 발매트','🧺'],['d_t09','겨울 침낭','🛏️'],
+    ['d_t10','누비이불','🧵'],
+    /* 장난감·수집품 (12) */
+    ['d_toy01','나무 팽이','🌀'],['d_toy02','인형의 집 미니어처','🏠'],['d_toy03','퍼즐 상자','🧩'],
+    ['d_toy04','장난감 기차','🚂'],['d_toy05','딸랑이 장난감','🔔'],['d_toy06','종이비행기','✈️'],
+    ['d_toy07','유리구슬 모음','🔵'],['d_toy08','만화경','🔭'],['d_toy09','목마 장난감','🐴'],
+    ['d_toy10','회전목마 모형','🎠'],['d_toy11','태엽 인형','🪆'],['d_toy12','딱지 모음','🎴'],
+    /* 음식·주방 (10) */
+    ['d_f01','갓 구운 빵 바구니','🥖'],['d_f02','꿀단지','🍯'],['d_f03','찻주전자','🫖'],
+    ['d_f04','쿠키 접시','🍪'],['d_f05','사과 바구니','🍎'],['d_f06','도토리 잼 병','🫙'],
+    ['d_f07','버섯 수프 냄비','🍲'],['d_f08','우유병','🥛'],['d_f09','치즈 판','🧀'],
+    ['d_f10','견과류 그릇','🥜'],
+    /* 자연·동물 소품 (10) */
+    ['d_n01','부엉이 인형','🦉'],['d_n02','고슴도치 인형','🦔'],['d_n03','나비 장식','🦋'],
+    ['d_n04','작은 벌집 모형','🐝'],['d_n05','새 모이통','🐦'],['d_n06','사슴뿔 장식','🦌'],
+    ['d_n07','조개껍데기 바구니','🐚'],['d_n08','솔방울 바구니','🌲'],['d_n09','도토리 목걸이','🌰'],
+    ['d_n10','이끼 낀 돌','🪨'],
+    /* 마법·판타지 (10) */
+    ['d_m01','수정구슬','🔮'],['d_m02','마법 지팡이','🪄'],['d_m03','별가루 병','✨'],
+    ['d_m04','오래된 마법서','📖'],['d_m05','요정 램프','🧚'],['d_m06','아기 용알 장식','🥚'],
+    ['d_m07','행운의 부적','🧿'],['d_m08','황금 열쇠','🗝️'],['d_m09','무지개 프리즘','🌈'],
+    ['d_m10','별자리 오르골','🎵']
+  ];
+  for(var i=0;i<MORE.length;i++){
+    var it=MORE[i];
+    DECOR_ITEMS[it[0]]={n:it[1], ic:it[2], cost:tierCost(i)};
+  }
+})();
+function decorState(){
+  if(!S.decor || typeof S.decor!=='object') S.decor={owned:{},pos:{}};
+  if(!S.decor.owned || typeof S.decor.owned!=='object') S.decor.owned={};
+  if(!S.decor.pos   || typeof S.decor.pos!=='object')   S.decor.pos={};
+  return S.decor;
+}
+/* ★ 소품이 8종 → 100종으로 늘어나면서(2026-08-31) 겹침 판정 박스 크기와 자동배치
+   격자 후보 수를 renderDecorPlaced()와 공유하는 상수로 뺐다 — 한쪽만 고치면
+   자동배치는 안 겹치는데 드래그로 옮기면 겹치는(또는 그 반대) 불일치가 생기기
+   때문. 100개를 다 사도 자리가 나오도록 격자를 8×14=112칸으로 넉넉히 잡는다. */
+var DECOR_BOXW=0.115, DECOR_BOXH=0.090;
+/* 새로 산 소품을 겹치지 않는 자리에 자동으로 놓는다 — 격자 후보를 훑어서
+   기존 소품과 안 겹치는 첫 자리를 쓴다(사용자 요청 "겹치기는 안되게"). */
+function decorFreeSpot(excludeId){
+  var D=decorState();
+  function overlapAny(x,y){
+    for(var k in D.owned){
+      if(!D.owned[k] || k===excludeId) continue;
+      var p=D.pos[k]; if(!p) continue;
+      if(Math.abs(p.x-x)<DECOR_BOXW && Math.abs(p.y-y)<DECOR_BOXH) return true;
+    }
+    return false;
+  }
+  var cols=8, rows=14;
+  for(var r=0;r<rows;r++){
+    for(var c=0;c<cols;c++){
+      var x=0.08 + c*((0.92-0.08)/(cols-1));
+      var y=0.30 + r*((0.86-0.30)/(rows-1));
+      if(!overlapAny(x,y)) return {x:x,y:y};
+    }
+  }
+  /* ★ 2026-08-31 — 100종 전수 구매 테스트에서 발견: 격자(약 45~50칸 실사용
+     가능)가 다 차면 전부 화면 정중앙 한 점에 완전히 겹쳐 쌓여 개별적으로
+     드래그도 못 하는 상태가 됐다. id를 씨앗으로 한 결정적 유사난수로 화면
+     전체에 흩어놓아 최소한 다 따로 보이고 옮길 수 있게 한다(완전 무겹침은
+     보장 못 함 — 방 하나에 소품이 많아지면 근본적으로 공간이 부족해지므로,
+     "쉼터를 방 단위로 확장" 아이디어가 이 문제의 진짜 해결책이다). */
+  var h=0; for(var ci=0; ci<excludeId.length; ci++) h=(h*31 + excludeId.charCodeAt(ci)) >>> 0;
+  var fx=0.10 + (h%97)/97*0.80;
+  var fy=0.32 + ((h>>>7)%53)/53*0.50;
+  return {x:fx,y:fy};
+}
+function decorAutoPlace(id){
+  var D=decorState();
+  if(!D.pos[id]) D.pos[id]=decorFreeSpot(id);
+}
+function renderDecorShop(){
+  var D=decorState();
+  var head=el('div','info');
+  head.innerHTML='🍂 <b>도토리를 모아 쉼터를 꾸며요!</b><br>산 소품은 바로 오두막 쉼터에 놓여요 — '+
+    '<b>쉼터 화면에서 손가락으로 끌어</b> 원하는 자리로 옮길 수 있어요(다른 소품과는 안 겹쳐요).';
+  sheetBody.appendChild(head);
+  var grid=el('div','grid g3'); grid.style.marginTop='10px';
+  for(var id in DECOR_ITEMS){
+    (function(id){
+      var it=DECOR_ITEMS[id], owned=!!D.owned[id];
+      var c=el('button','cell');
+      c.style.minHeight='104px';
+      if(owned) c.style.cssText+=';background:linear-gradient(180deg,#FFFDF6,rgba(123,199,126,.26));border-color:#7BC77E';
+      var ic=el('div',null,it.ic); ic.style.fontSize='32px'; c.appendChild(ic);
+      c.appendChild(el('div','nm',it.n));
+      if(owned){
+        var tag=el('span','qty',''); tag.textContent='보유중'; tag.style.cssText='background:#7BC77E;color:#173B1A';
+        c.appendChild(tag);
+        c.addEventListener('click',function(){ toast(it.n+'은(는) 이미 쉼터에 있어요 — 쉼터에서 끌어 옮겨보세요 🍂'); });
+      } else {
+        var cost=el('div',null,'🌰 '+it.cost);
+        cost.style.cssText='font-size:12px;color:#9C6B33;font-weight:800;margin-top:2px';
+        c.appendChild(cost);
+        c.addEventListener('click',function(){
+          if((S.acorn|0)<it.cost){ SFX.no&&SFX.no(); toast('도토리가 모자라요 🌰 ('+it.cost+'개 필요)'); return; }
+          S.acorn-=it.cost; D.owned[id]=1; decorAutoPlace(id);
+          SFX.coin(); saveGame(); syncHUD();
+          toast(it.n+'을(를) 샀어요! 쉼터에 놓였어요 🎉');
+          renderSheet();
+        });
+      }
+      grid.appendChild(c);
+    })(id);
+  }
+  sheetBody.appendChild(grid);
+}
+/* 쉼터 화면 위에 산 소품들을 그려서 드래그로 옮길 수 있게 한다.
+   wrap 을 기준으로 한 비율 좌표(0~1)로 저장/복원한다 — 화면 크기가 달라도
+   항상 같은 자리에 보인다. */
+function renderDecorPlaced(wrap){
+  var D=decorState();
+  function overlapAny(id,x,y){
+    for(var k in D.owned){
+      if(!D.owned[k] || k===id) continue;
+      var p=D.pos[k]; if(!p) continue;
+      if(Math.abs(p.x-x)<DECOR_BOXW && Math.abs(p.y-y)<DECOR_BOXH) return true;
+    }
+    return false;
+  }
+  for(var id in D.owned){
+    if(!D.owned[id]) continue;
+    var it=DECOR_ITEMS[id]; if(!it) continue;
+    if(!D.pos[id]) D.pos[id]=decorFreeSpot(id);
+    (function(id,it){
+      var pos=D.pos[id];
+      var box=el('div');
+      box.style.cssText='position:absolute;left:'+(pos.x*100)+'%;top:'+(pos.y*100)+'%;'+
+        'transform:translate(-50%,-50%);width:13vw;height:13vw;max-width:60px;max-height:60px;'+
+        'display:flex;align-items:center;justify-content:center;font-size:min(8.6vw,40px);'+
+        'filter:drop-shadow(0 4px 5px rgba(0,0,0,.5));cursor:grab;touch-action:none;'+
+        'user-select:none;-webkit-user-select:none;z-index:6';
+      box.textContent=it.ic;
+      wrap.appendChild(box);
+      var dragging=false, wrapRect=null, lastGood={x:pos.x,y:pos.y}, curFrac=null;
+      box.addEventListener('pointerdown',function(e){
+        dragging=true; curFrac=null;
+        try{ box.setPointerCapture(e.pointerId); }catch(er){}
+        wrapRect=wrap.getBoundingClientRect();
+        box.style.cursor='grabbing'; box.style.zIndex=30; box.style.filter='drop-shadow(0 8px 10px rgba(0,0,0,.55)) brightness(1.08)';
+        if(e.cancelable) e.preventDefault();
+      },{passive:false});
+      box.addEventListener('pointermove',function(e){
+        if(!dragging || !wrapRect) return;
+        var fx=(e.clientX-wrapRect.left)/wrapRect.width, fy=(e.clientY-wrapRect.top)/wrapRect.height;
+        fx=Math.min(0.94,Math.max(0.06,fx)); fy=Math.min(0.88,Math.max(0.28,fy));
+        curFrac={x:fx,y:fy};
+        box.style.left=(fx*100)+'%'; box.style.top=(fy*100)+'%';
+      });
+      function endDrag(){
+        if(!dragging) return;
+        dragging=false; box.style.cursor='grab'; box.style.zIndex=6;
+        box.style.filter='drop-shadow(0 4px 5px rgba(0,0,0,.5))';
+        var f=curFrac||lastGood;
+        if(overlapAny(id,f.x,f.y)){
+          box.style.left=(lastGood.x*100)+'%'; box.style.top=(lastGood.y*100)+'%';
+          toast('다른 소품과는 겹칠 수 없어요 🙅','warn',null,1200);
+        } else {
+          lastGood={x:f.x,y:f.y}; D.pos[id]=lastGood; saveGame();
+        }
+      }
+      box.addEventListener('pointerup',endDrag);
+      box.addEventListener('pointercancel',endDrag);
+    })(id,it);
+  }
+}
 function renderMake(){
   if(curTab===0) renderFuseMat();
   else if(curTab===1) renderEvolve();
@@ -17855,7 +18138,7 @@ function renderSheet(){
   var gb=$('btnReset');
   if(gb) gb.classList.toggle('hidden', !(curSheet==='map' && curTab===0));
   sheetBody.innerHTML='';
-  ({bag:renderBag,gear:renderGear,pet:renderPet,make:renderMake,book:renderBook,map:renderMap,village:renderVillage})[curSheet]();
+  ({bag:renderBag,gear:renderGear,pet:renderPet,make:renderMake,book:renderBook,map:renderMap,village:renderVillage,decor:renderDecorShop})[curSheet]();
   /* 내용 높이가 줄었을 수 있으므로 범위 안으로 잘라 넣는다 */
   var maxTo=Math.max(0, sheetBody.scrollHeight - sheetBody.clientHeight);
   sheetBody.scrollTop = Math.min(keepTo, maxTo);
@@ -19476,7 +19759,13 @@ function renderVillage(){
     /* ══ AI 그림 배경(2026-08-31, 사용자 요청 "로비도 AI 이미지로 고급지게") ══
        art/village_bg.webp 를 풀스크린 cover 로 깐다. 창문·랜턴·벽난로·침대·
        바닥 등은 이제 그림 안에 이미 그려져 있으므로 CSS 도형들은 다 지우고,
-       그림 위에 놓일 벽시계 + 클릭 가능한 침대/벽난로 투명 히트존만 남긴다. */
+       그림 위에 놓일 벽시계 + 클릭 가능한 침대/벽난로 투명 히트존만 남긴다.
+       ★★ 2026-08-31 — "디오라마처럼 방 전체를 축소" 시도를 했다가 되돌렸다.
+       사용자 지적("쉼터 자체가 전체적으로 줄어들면 쉼터 꾸미기는 어떻게 하냐")이
+       맞다 — 화면 전체를 써야 드래그드롭 소품 배치(요청 N)를 놓을 자리가 나온다.
+       가구가 커 보이는 건 그림 자체의 비율 문제라 다시 그리지 않는 한 완전히
+       해결은 안 되니, 이번엔 화면을 꽉 채우는 원래 방식으로 되돌리고 대신
+       실제 기능(꾸미기 상점 + 배치)에 시간을 쓴다. */
     /* 벽시계 - 그림의 빈 벽 부분(왼쪽 위, 침대 위쪽) 위에 겹쳐 얹는다 */
     '<div style="position:absolute;top:20%;left:9%;width:8vh;height:8vh;max-width:50px;max-height:50px;border-radius:50%;'+
       'background:radial-gradient(circle at 35% 30%,#FFF8E7,#EDDDB8 78%);border:5px solid #3A2717;'+
@@ -19567,13 +19856,40 @@ function renderVillage(){
   hdr.appendChild(xb);
   wrap.appendChild(hdr);
 
+  /* 2026-08-31 사용자 요청("던전, 별빛 탑 현재 몇단계 진행 중인지 정보도 좀 알 수
+     있게 개선해줘") — 쉼터는 허브 화면이라 지금 어디까지 왔는지 한눈에 안 보였다.
+     본편 진행(S.chap → chapName, 탑 진행 중이면 그 안에서 알아서 층수로 표시함)과
+     별빛의 탑 최고 도달 층(twBest)을 헤더 바로 아래 알약 모양 표시줄로 보여준다. */
+  try{
+    var prog=el('div');
+    prog.style.cssText='position:absolute;top:56px;left:10px;right:10px;display:flex;'+
+      'justify-content:center;pointer-events:none';
+    var progPill=el('div');
+    progPill.style.cssText='padding:6px 16px;border-radius:999px;background:rgba(20,13,8,.58);'+
+      'border:2px solid rgba(255,233,199,.28);color:#FFE9C7;font-size:12.5px;font-weight:700;'+
+      'text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.6);white-space:nowrap;'+
+      'box-shadow:0 3px 10px rgba(0,0,0,.35)';
+    var _twB=twBest();
+    progPill.innerHTML='🌲 '+chapName(S.chap)+(_twB>0? ('&nbsp;&nbsp;·&nbsp;&nbsp;🌌 별빛의 탑 최고 '+_twB+'층') : '');
+    prog.appendChild(progPill);
+    wrap.appendChild(prog);
+  }catch(e){}
+
   /* 주인공을 러그 위, 침대와 벽난로 사이에 세운다 (장비 착용 화면과 같은 인형 캔버스 재사용) */
   try{
+    /* 2026-08-31 사용자 제보("로비도 침대나 이런것들이 거대하다..캐릭터 크기에도 좀
+       맞게") — AI 배경 그림 속 침대·벽난로가 실사 가구 비율로 커서, 기존 캐릭터
+       인형(36vw)이 상대적으로 너무 작아 미니어처 느낌이 안 났다. 인형을 확실히
+       키워서 가구와 어울리는 존재감을 준다(발밑 위치는 그대로 러그 위에 고정). */
     var doll=heroDollCanvas();
-    doll.style.cssText='position:absolute;left:50%;bottom:14%;transform:translateX(-50%);'+
-      'width:min(36vw,190px);height:min(36vw,190px);pointer-events:none;filter:drop-shadow(0 6px 5px rgba(0,0,0,.4))';
+    doll.style.cssText='position:absolute;left:50%;bottom:15%;transform:translateX(-50%);'+
+      'width:min(46vw,235px);height:min(46vw,235px);pointer-events:none;filter:drop-shadow(0 6px 5px rgba(0,0,0,.4))';
     wrap.appendChild(doll);
   }catch(e){}
+
+  /* 2026-08-31 신규 — 산 소품들을 화면 위에 그려서 드래그로 옮길 수 있게 한다
+     (요청 I/J/N: 재료 모아 쉼터 꾸미기 + 상점 + 드래그드롭 배치, 겹침 방지). */
+  try{ renderDecorPlaced(wrap); }catch(e){}
 
   /* 하단 : 반투명 액션바 (참고 이미지의 하단 네비게이션처럼) */
   var bar=el('div');
@@ -19585,6 +19901,27 @@ function renderVillage(){
   cap.style.cssText='color:#FFE9C7;font-size:13px;text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.7)';
   cap.textContent='🍂 침대 = 체력 회복 · 벽난로 = 잠깐 쉬기 · 아래 버튼으로 바로 이동';
   bar.appendChild(cap);
+
+  /* 2026-08-31 사용자 요청("쉼터에서도 던전에서 나타나는 사이드바 모두 보여지게 해줘.
+     장비, 펫 등등") — 쉼터는 화면 전체를 덮는 전용 씬이라(sheetVillage 가 시트의 카드
+     프레임을 다 꺼서 헤더바·탭도 없다) 원래 하단 독(가방/장비/펫/만들기/도감/지도)이
+     이 화면 뒤에 완전히 가려져 눌리지 않았다. openSheet() 는 kind 가 바뀌면
+     sheetVillage 클래스를 알아서 떼어내므로(17819줄), 여기서 그 시트들을 그대로
+     열면 된다 — 새 로직 없이 기존 화면들을 쉼터 안에서도 한 번의 탭으로 열게만
+     이어준다. */
+  var quick=el('div'); quick.style.cssText='display:flex;gap:8px;justify-content:center';
+  [['🛋️','꾸미기','decor',0],['🎒','가방','bag',0],['🛡️','장비','gear',0],['🐾','펫','pet',0],
+   ['🔨','만들기','make',0],['📖','도감','book',0],['🗺️','지도','map',0]].forEach(function(q){
+    var qb=el('button');
+    qb.style.cssText='flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;'+
+      'padding:7px 2px;border-radius:14px;border:2.5px solid rgba(255,255,255,.22);'+
+      'background:rgba(44,33,25,.55);color:#FFF3E0;font-size:19px;min-width:0';
+    qb.innerHTML='<span style="line-height:1">'+q[0]+'</span>'+
+      '<span style="font-size:10px;line-height:1;white-space:nowrap">'+q[1]+'</span>';
+    qb.addEventListener('click',function(){ SFX.coin&&SFX.coin(); openSheet(q[2],q[3]); });
+    quick.appendChild(qb);
+  });
+  bar.appendChild(quick);
 
   var row=el('div'); row.style.cssText='display:flex;gap:10px';
   var lockLeft=Math.max(0, Math.ceil(((S.villageLockUntil||0)-nowMs())/1000));
