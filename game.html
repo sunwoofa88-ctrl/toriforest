@@ -14542,13 +14542,22 @@ function weaponSwingFX(wx,wy,rng,fallbackCol){
   var i, a2;
 
   if(WT==='sword'||WT==='katana'){
-    /* 빠르고 날카로운 베기 : 궤적 + 잔상 + 끝점 플래시 */
-    fxSlashArc(P.x,P.y,ang,rng*1.05*big,C,false);
-    fxSlashArc(P.x,P.y,ang-0.22,rng*0.58*big,C,false,1);      /* 잔상 */
-    fxFlash(cx,cy,rng*0.30*big,C,0.09,0.6);
-    fxShards(cx,cy,ang,C,8,470,0.95,24*big);
-    fxShock(P.x,P.y,rng*0.52*big,C,0.26);
-    hitStop(0.035);
+    /* 빠르고 날카로운 베기 : 궤적 + 잔상 + 끝점 플래시
+       ★ 2026-08-31 — 사용자 실측 제보("칼 휘두르는 모습이 이게 맞냐")로 발견:
+       ATK_FXS(0.50)×FX_SCALE(0.44) 가 모든 이펙트에 곱으로 걸려 있어(스킬이
+       화면을 덮지 않게 하려던 안전장치, 13885줄 참고) 정작 가장 자주 보이는
+       평타 검 이펙트가 초승달 그림 기준 화면에 ~54px 로만 찍혀 실제 검을
+       휘두르는 느낌이 전혀 안 났다(던파 소드마스터/버서커 참고 이미지 대비
+       실측 확인). 다른 원소 스킬(nova/orbit/laser 등)의 화면 혼잡도는
+       그대로 둬야 하므로 전역 상수는 안 건드리고, 검 계열 이펙트에 들어가는
+       반경만 로컬 배율(VSW)로 키워서 두 배율을 상쇄한다. */
+    var VSW=2.3, vr=rng*VSW, vcx=P.x+P.fx*vr*0.45, vcy=P.y+P.fy*vr*0.45;
+    fxSlashArc(P.x,P.y,ang,vr*1.05*big,C,false);
+    fxSlashArc(P.x,P.y,ang-0.22,vr*0.58*big,C,false,1);      /* 잔상 */
+    fxFlash(vcx,vcy,vr*0.30*big,C,0.09,0.6);
+    fxShards(vcx,vcy,ang,C,10,520,0.95,30*big);
+    fxShock(P.x,P.y,vr*0.52*big,C,0.26);
+    hitStop(0.045);
   }
   else if(WT==='great'||WT==='hammer'){
     /* 묵직한 내리찍기 : 큰 플래시 → 흙덩이 → 이중 충격파 */
@@ -16783,7 +16792,18 @@ function drawHero(px,py){
     GA(1);
     var _wid=(S.eqW && EQUIP[S.eqW] && eqOwned(S.eqW))? S.eqW : null;
     var _wg = _wid? wepGrip(_wid) : {x:0.234,y:0.813,rot:(W_HOLD+0.85)};
-    var _ws=WS*(_wg.s||1);
+    /* ★ 2026-08-31 — 검류(sword/katana) 무기 원화가 132×132 정사각형(짧고 둥근 실루엣)
+       이라, 각도만 정확히 바뀌어도 화면상으론 "제자리에서 흔들리는" 정도로만 보인다
+       (실측 확인 : /tmp/frozen2_*pct.png — trailAng 은 -0.66→-2.67 로 크게 도는데
+       132px 짜리 뭉툭한 그림이 회전 중심 가까이서 도니 스윕 궤적이 잘 안 읽힌다.
+       던파처럼 '칼이 팔 밖으로 길게 뻗어나가며 큰 호를 그리는' 느낌을 내려면 —
+       원화를 다시 그리지 않고도 — 공격 중(kk9 0~1)에만 그려지는 크기를 키워서
+       회전 반경(팔 길이)을 늘린다. 대기 자세는 그대로 두어 평소 들고 있는 크기는
+       안 바뀐다. 추측이 아니라 스크린샷으로 실측 확인 후 넣은 값이다. */
+    var _wtid=(_wid && EQUIP[_wid])? EQUIP[_wid].tn : -1;
+    var _wtype=(_wtid>=0 && WEP_TYPE[_wtid])? WEP_TYPE[_wtid].id : '';
+    var _swAtk=(kk9>=0 && kk9<1 && (_wtype==='sword'||_wtype==='katana'))? 1.55 : 1;
+    var _ws=WS*(_wg.s||1)*_swAtk;
     var _ang=swing+_wg.rot, _L=_ws*(_wg.y||0.8);
     /* ══ 무기 궤적(트레일) + 잔상(스미어) ═══════════════════════════════
        GDQuest : 공격 중 정적 스프라이트에 '번짐(smearing)' 을 넣으면
