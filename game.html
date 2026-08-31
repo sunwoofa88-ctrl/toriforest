@@ -13459,6 +13459,34 @@ var W_GRIP = {
 };
 /* 그림이 없는 절차적 무기의 기본 목표 각도 */
 var W_HOLD = -2.05;
+/* ★★ 2026-08-31 — 사용자 제보("검을 손잡이를 안 잡고 있는거지?" / "모든 검
+   종류의 칼자루 위치를 잘못 인식하고 있는것 같다"): 무기를 장비하지 않고
+   스킬 무기 그림만 쓸 때(장비 슬롯이 비어 손 앵커를 wepGrip() 대신 아래
+   상수로 고정하던 경로) 앵커가 (0.234,0.813) 고정값이었다. bakeAbilSprite()
+   가 실제로 자루를 그리는 좌표(100×100 기준, 검: (44,78)~(56,95) 사각형)를
+   재보니 중심은 (0.50,0.865) — x가 27%p 가까이 어긋나 있어서 칼이 손 옆
+   허공에 떠 보였다(실측 후 수정, 추측 아님 — 아래 doll_raw_2x.png 스크린샷과
+   bakeAbilSprite() 좌표 대조로 확인). 무기 종류(검/지팡이/망치, A.arche)마다
+   자루 그림 좌표가 다르므로 종류별 표로 바꾼다.
+   ★ 범위 note: 이건 "무기를 장비 안 했을 때(스킬 무기 그림)" 경로 하나만
+   고친 것이다. 실제 장비창에서 낀 검(WEP_AUTO[].gx/gy, 개별 무기 그림마다
+   따로 잡혀 있는 표)은 이번에 따로 감사 안 함 — 사용자가 "모든 검 종류"라고
+   했으니 다음으로 그 표도 무기 하나하나 스크린샷으로 실측 검증 필요. */
+var ABIL_GRIP_FALLBACK={
+  /* nat: 손 그림 자체의 회전각(라디안). 8가지 후보(0, ±90°, ±45°, ±135°, 180°)를
+     실제로 렌더링해 확대 비교한 결과, 검(arche 0)은 nat=Math.PI/2(90°)일 때
+     주먹 관절이 정면을 향하고 손가락이 자루를 완전히 감싸 쥐는 것처럼 보여
+     가장 자연스러웠다 — 나머지 후보는 자루가 주먹 위로 겹쳐 뜨거나 각도가
+     어색했다. 지팡이/망치는 이번에 실측하지 않아 0으로 둔다(다음 감사 대상). */
+  0:{x:0.50, y:0.865, nat:Math.PI/2},  /* 검 — XY: bakeAbilSprite() 자루 폴리곤 중심 실측, 각도: 8종 스윕 비교 실측 */
+  1:{x:0.50, y:0.75,  nat:0},          /* 지팡이 — 샤프트 중간 어림값(스크린샷 검증 안 함) */
+  2:{x:0.50, y:0.80,  nat:0}           /* 망치 — 자루 아래쪽 어림값(스크린샷 검증 안 함) */
+};
+function abilGripFallback(){
+  var A=ABIL[S.abil];
+  var g=(A && ABIL_GRIP_FALLBACK[A.arche]) || ABIL_GRIP_FALLBACK[0];
+  return {x:g.x, y:g.y, rot:(W_HOLD+0.85), nat:g.nat};
+}
 /* 그림은 120틀의 (15,20,90,90) 에 그려지므로 그 보정을 넣는다 */
 /* ══════════════════════════════════════════════════════════════════════
    무기 종류별 파지 규격 (48종) — 레퍼런스 실화면 격자 실측 기반
@@ -16886,7 +16914,7 @@ function drawHero(px,py){
     var WS=sz*0.60*wScale;
     GA(1);
     var _wid=(S.eqW && EQUIP[S.eqW] && eqOwned(S.eqW))? S.eqW : null;
-    var _wg = _wid? wepGrip(_wid) : {x:0.234,y:0.813,rot:(W_HOLD+0.85)};
+    var _wg = _wid? wepGrip(_wid) : abilGripFallback();
     /* ★ 2026-08-31 — 검류(sword/katana) 무기 원화가 132×132 정사각형(짧고 둥근 실루엣)
        이라, 각도만 정확히 바뀌어도 화면상으론 "제자리에서 흔들리는" 정도로만 보인다
        (실측 확인 : /tmp/frozen2_*pct.png — trailAng 은 -0.66→-2.67 로 크게 도는데
@@ -17806,7 +17834,7 @@ function heroDollCanvas(){
   var wsp=wid? eqSprWorld(wid) : (typeof abilSpr==='function'? abilSpr(S.abil, abilTier(S.abil)) : null);
   if(wsp){
     var WS=sz*0.62;
-    var _wg = wid? wepGrip(wid) : {x:0.234,y:0.813,rot:(W_HOLD+0.85)};
+    var _wg = wid? wepGrip(wid) : abilGripFallback();
     var _HH2=heroHand();
     var hx2=ox+sz*_HH2[0], hy2=oy+sz*_HH2[1];
     g.save(); g.translate(hx2, hy2); g.rotate(_wg.rot);
@@ -18215,6 +18243,29 @@ function renderDecorPlaced(wrap, room){
     if(it.fn && D.use[it.fn]!==id) continue;
     if(!D.pos[id]) D.pos[id]=decorFreeSpot(id, room);
     if(D.pos[id].room!==room) continue;   /* 다른 방에 있는 소품은 여기 안 그린다 */
+    /* ★★ 2026-08-31 재수정 — 사용자 제보("쉼터에 엄청 작은 침대모양 아이콘도
+       있던데 그건 뭐냐"): main 방 배경 그림엔 이미 침대·벽난로가 큼직하게
+       그려져 있는데, 그 위에 작은 이모지 아이콘까지 따로 떠 있으니 침대가
+       두 개처럼 보여 지저분하고 뜬금없어 보였다. main 에서는 예전처럼
+       "그림 위에 안 보이는 탭 영역"만 두고(#vBed/#vFire 자리 그대로), 이모지
+       아이콘은 안 그린다 — 새로 생긴 방(주방 등)엔 대응하는 그림이 없으니
+       거기서만 이모지 아이콘으로 보여주고 드래그도 가능하게 둔다. */
+    if(it.fn && room==='main'){
+      (function(it){
+        var hz=(it.fn==='bed')
+          ? 'left:0;bottom:40%;width:44%;height:22%'
+          : 'right:2%;bottom:28%;width:34%;height:26%';
+        var hzBox=el('div');
+        hzBox.setAttribute('data-decorbox','1');
+        hzBox.style.cssText='position:absolute;'+hz+';cursor:pointer;z-index:6';
+        hzBox.addEventListener('click',function(e){
+          e.stopPropagation();
+          if(it.fn==='bed') villageSleep(wrap); else villageWarm();
+        });
+        wrap.appendChild(hzBox);
+      })(it);
+      continue;
+    }
     (function(id,it){
       var pos=D.pos[id];
       var box=el('div');
@@ -20073,9 +20124,15 @@ function renderVillage(){
        맞게") — AI 배경 그림 속 침대·벽난로가 실사 가구 비율로 커서, 기존 캐릭터
        인형(36vw)이 상대적으로 너무 작아 미니어처 느낌이 안 났다. 인형을 확실히
        키워서 가구와 어울리는 존재감을 준다(발밑 위치는 그대로 러그 위에 고정). */
+    /* ★★ 2026-08-31 재수정 — 사용자 제보("UI 완전 엉망")로 실제 스크린샷을
+       찍어보니, "침대에 눕기" 버튼이 추가되며 하단 액션바가 한 줄 더 길어졌는데
+       인형은 여전히 bottom:15%(예전 기준)라서 캡션 글자·퀵독 버튼("만들기")이
+       인형 몸통에 절반 넘게 가려져 있었다 — 클릭은 되지만(pointer-events:none)
+       보기엔 완전히 깨진 화면이었다. 액션바가 커진 만큼 인형을 위로 올리고
+       살짝 줄인다. */
     doll=heroDollCanvas();
-    doll.style.cssText='position:absolute;left:'+(R.x*100)+'%;bottom:15%;transform:translateX(-50%);'+
-      'width:min(46vw,235px);height:min(46vw,235px);pointer-events:none;'+
+    doll.style.cssText='position:absolute;left:'+(R.x*100)+'%;bottom:34%;transform:translateX(-50%);'+
+      'width:min(38vw,190px);height:min(38vw,190px);pointer-events:none;'+
       'filter:drop-shadow(0 6px 5px rgba(0,0,0,.4));transition:left .45s ease';
     wrap.appendChild(doll);
   }catch(e){}
@@ -21231,14 +21288,26 @@ function beginPlay(){
   musicEnsure(); musicVol();
   rebuildPets();
   if(!WD) enterChapter(S.chap|0);
-  startLoop();
+  /* ★ startLoop()를 더 이상 여기서 안 부르므로(아래 설명), 루프가 매 프레임
+     대신 해주던 HUD 숫자 동기화(도토리·별가루 표시 등)를 여기서 한 번 직접
+     불러 둔다 — 안 그러면 쉼터를 나가기 전까지 상단 HUD 숫자가 "0"에서 안
+     바뀐 채로 남는다(회귀 테스트로 발견). */
+  try{ syncHUD(); }catch(e){}
   homeHint();
   /* 2026-08-31 신규: 게임을 켤 때마다 숲으로 바로 던지지 않고 오두막 쉼터에서 시작한다.
      (유저 요청: "게임 켰을 때 쉼터에 캐릭터가 있어야지") 월드는 이미 위에서 초기화돼
      뒤에 그대로 떠 있고, 쉼터에서 '던전 입구로 가기'를 누르면 그 월드로 바로 들어간다.
      안내 배너·튜토리얼 토스트는 예전엔 여기서 바로 떴는데, 그러면 쉼터 화면 위에
-     겹쳐 보이니 실제로 숲에 들어가는 순간(enterWorldHints)으로 옮겼다. */
-  setTimeout(function(){ openSheet('village',0); }, 60);
+     겹쳐 보이니 실제로 숲에 들어가는 순간(enterWorldHints)으로 옮겼다.
+     ★★ 2026-08-31 재수정 — 사용자 제보("게임 시작 버튼 누르면 또 던전 이미지
+     나타났다가 쉼터로 이동된다"): 원인은 여기서 startLoop()를 먼저 불러 던전/숲
+     캔버스가 실제로 그려지기 시작하고, 그 후 setTimeout 60ms 뒤에야 쉼터 시트를
+     열어 덮었던 것 — 그 60ms(약 3~4프레임) 동안 던전이 실제로 화면에 보였다.
+     openSheet()는 내부에서 stopLoop()을 부르고, 쉼터를 나갈 때(closeSheet, 던전
+     입구로 버튼)는 반대로 startLoop()을 다시 불러 던전 루프가 정상 시작되므로,
+     여기서는 startLoop()을 아예 부르지 않고 쉼터 시트를 지연 없이 바로 연다 —
+     캔버스가 한 프레임도 그려지지 않은 채 쉼터로 덮인다. */
+  openSheet('village',0);
 }
 function enterWorldHints(){
   if(!S.tut){
@@ -21558,6 +21627,7 @@ window.__TORI = { onBack:function(){ try{ return onBackKey(); }catch(e){ return 
   quitApp:function(){ try{ return quitApp(); }catch(e){ return false; } },
   get S(){return S;}, get G(){return G;}, get P(){return P;}, EN:EN,
   doAttack:doAttack, doUlt:doUlt, beginPlay:beginPlay, openSheet:openSheet, closeSheet:closeSheet,
+  syncHUD:function(){ try{ return syncHUD(); }catch(e){ return null; } },
   spawnEnemy:function(k){ var a=Math.random()*6.28;
     return spawnEnemyAt(k, P.x+Math.cos(a)*220, P.y+Math.sin(a)*160, -1, 1); },
   layout:layout, render:render, enterChapter:enterChapter,
