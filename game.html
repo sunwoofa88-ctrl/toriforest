@@ -516,6 +516,11 @@ body.sheeting #toasts{top:auto;bottom:14px}
 .tab.on{background:linear-gradient(180deg,#FFF9EA,#FFEFCB);transform:translateY(-2px);box-shadow:0 -3px 0 var(--star) inset}
 
 .sheet-bd{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 12px;overscroll-behavior:contain}
+/* 오두막 쉼터 : 카드형 시트가 아니라 화면을 꽉 채우는 '장소'처럼 보이게 한다.
+   (참고 이미지처럼 팝업 느낌을 빼고, 배경이 화면 전체를 덮게) */
+.sheet.sheetVillage .sheet-in{max-width:none;width:100%;height:100%;max-height:100%;border-radius:0;border:0;animation:none}
+.sheet.sheetVillage .sheet-hd,.sheet.sheetVillage .sheet-foot,.sheet.sheetVillage .tabs{display:none}
+.sheet.sheetVillage .sheet-bd{padding:0;overflow:hidden;height:100%}
 /* 가로 화면 : 세로 공간이 좁으니 머리·탭·여백을 줄여 내용이 더 보이게 */
 @media (max-height:520px){
   .sheet-hd{padding:6px 10px!important}
@@ -15018,8 +15023,11 @@ function updatePlayer(dt){
       P.dead=0; HP=maxHp(); P.invT=1.6;
       var sf=findFree(WD.spawn.x,WD.spawn.y,PLAYER_R*SC);
       P.x=sf?sf.x:WD.spawn.x; P.y=sf?sf.y:WD.spawn.y; clampCam(true);
-      toast('마을에서 다시 시작했어요!','good',null,2600);
       needSync=1;
+      /* 2026-08-31 신규(유저 요청): 쓰러지면 숲 한복판이 아니라 오두막 쉼터로 돌아가고,
+         30초간은 다시 던전에 들어갈 수 없다(성급하게 바로 재도전해서 또 죽는 것 방지). */
+      S.villageLockUntil = nowMs() + 30000;
+      openSheet('village',0);
     }
     return;
   }
@@ -17770,6 +17778,7 @@ function openSheet(kind,tab){
   try{ ATK_STOP(); }catch(e){}
   curSheet=kind; curTab=tab||0;
   sheetOpenedAt=nowMs();
+  sheetEl.classList.toggle('sheetVillage', kind==='village');
   sheetEl.classList.add('on'); document.body.classList.add('sheeting');
   sheetOpen=true; stopLoop(); saveGame();
   renderSheet();
@@ -19431,81 +19440,115 @@ function twRungCol(f){
    2026-08-31 신규. 별도 씬(카메라·이동)을 새로 만들 시간이 없어 기존 시트(오버레이) 시스템을
    재사용했다. 탑 UI는 이미 완성돼 있는 renderTower()를 그대로 연결한다(중복 구현 안 함). */
 function renderVillage(){
+  /* 2026-08-31 재작업: 유저가 참고 이미지(세븐나이츠류 마을 화면)를 보여줌 —
+     팝업 카드가 아니라 '화면 전체를 덮는 장소'처럼 보이길 원함.
+     openSheet()에서 sheetEl에 sheetVillage 클래스를 달아 시트의 카드 프레임
+     (헤더바·탭·하단 닫기바·둥근 카드)을 CSS로 다 꺼두었다 — 여기서는 그 빈
+     전체 화면(sheetBody, 100%) 하나에 장면을 통째로 그린다. */
   var wrap=el('div');
-  wrap.style.cssText='border-radius:18px;overflow:hidden;border:3px solid var(--ink);'+
-    'background:linear-gradient(180deg,#4A3222 0%,#5C4229 55%,#6B4E30 100%);margin:2px 0 12px';
+  wrap.style.cssText='position:relative;width:100%;height:100%;overflow:hidden;'+
+    'background:radial-gradient(120% 90% at 50% 18%,#6B4E30 0%,#4A3222 55%,#2C1F14 100%)';
 
-  var scene=el('div');
-  scene.style.cssText='position:relative;height:190px;overflow:hidden;'+
-    'background:repeating-linear-gradient(90deg,#7A5A38 0 26px,#6E5031 26px 28px)';
-  scene.innerHTML =
+  wrap.innerHTML =
+    /* 바닥(나무 널) */
+    '<div style="position:absolute;left:0;right:0;bottom:0;height:34%;'+
+      'background:repeating-linear-gradient(90deg,#5C4229 0 30px,#513A24 30px 33px);'+
+      'box-shadow:0 -3px 14px rgba(0,0,0,.35) inset"></div>'+
+    /* 벽 널판 결 */
+    '<div style="position:absolute;left:0;right:0;top:0;bottom:34%;'+
+      'background:repeating-linear-gradient(90deg,rgba(255,255,255,.02) 0 2px,transparent 2px 34px)"></div>'+
     /* 창문 - 별밤 */
-    '<div style="position:absolute;top:14px;left:50%;transform:translateX(-50%);width:70px;height:70px;border-radius:50%;'+
-      'background:radial-gradient(circle at 35% 30%,#3B4E8C,#1A1F3D 70%);border:6px solid #4A3222;box-shadow:0 0 0 3px #2C2119">'+
-      '<span style="position:absolute;top:12px;left:14px;font-size:11px">✨</span>'+
-      '<span style="position:absolute;top:34px;left:44px;font-size:9px">✨</span>'+
-      '<span style="position:absolute;top:22px;left:38px;font-size:15px">🌙</span>'+
+    '<div style="position:absolute;top:6%;left:50%;transform:translateX(-50%);width:17vh;height:17vh;max-width:110px;max-height:110px;border-radius:50%;'+
+      'background:radial-gradient(circle at 35% 30%,#3B4E8C,#151A33 72%);border:7px solid #3A2717;box-shadow:0 0 0 3px #2C2119,0 10px 22px rgba(0,0,0,.4)">'+
+      '<span style="position:absolute;top:18%;left:22%;font-size:12px">✨</span>'+
+      '<span style="position:absolute;top:56%;left:66%;font-size:10px">✨</span>'+
+      '<span style="position:absolute;top:32%;left:56%;font-size:26px">🌙</span>'+
     '</div>'+
+    /* 천장 랜턴(분위기) */
+    '<div style="position:absolute;top:4%;left:14%;font-size:22px;filter:drop-shadow(0 0 8px #FFB25A)">🏮</div>'+
+    '<div style="position:absolute;top:5%;right:15%;font-size:20px;filter:drop-shadow(0 0 8px #FFB25A)">🏮</div>'+
     /* 벽난로 - 오른쪽 */
-    '<div id="vFire" style="position:absolute;right:14px;bottom:0;width:78px;height:110px;cursor:pointer">'+
-      '<div style="position:absolute;bottom:0;width:78px;height:88px;border-radius:10px 10px 0 0;'+
-        'background:linear-gradient(180deg,#9A9184,#807869);border:3px solid var(--ink)"></div>'+
-      '<div style="position:absolute;bottom:6px;left:10px;width:58px;height:46px;border-radius:6px;background:#241611"></div>'+
-      '<div style="position:absolute;bottom:8px;left:20px;font-size:30px;filter:drop-shadow(0 0 10px #FF8A2A)">🔥</div>'+
+    '<div id="vFire" style="position:absolute;right:6%;bottom:30%;width:22vw;max-width:130px;height:34vh;max-height:190px;cursor:pointer">'+
+      '<div style="position:absolute;bottom:0;width:100%;height:78%;border-radius:14px 14px 0 0;'+
+        'background:linear-gradient(180deg,#9A9184,#736A5C);border:4px solid var(--ink)"></div>'+
+      '<div style="position:absolute;bottom:10%;left:14%;width:72%;height:52%;border-radius:8px;background:#1C110D"></div>'+
+      '<div style="position:absolute;bottom:13%;left:28%;font-size:min(9vw,44px);filter:drop-shadow(0 0 16px #FF8A2A)">🔥</div>'+
     '</div>'+
     /* 침대 - 왼쪽 */
-    '<div id="vBed" style="position:absolute;left:16px;bottom:10px;width:96px;height:56px;cursor:pointer">'+
-      '<div style="position:absolute;bottom:0;width:96px;height:14px;background:#6B4423;border-radius:0 0 6px 6px;border:3px solid var(--ink);border-top:none"></div>'+
-      '<div style="position:absolute;bottom:12px;width:96px;height:34px;border-radius:8px;border:3px solid var(--ink);'+
-        'background:repeating-linear-gradient(45deg,#E8664F 0 8px,#F4EFE3 8px 16px)"></div>'+
-      '<div style="position:absolute;bottom:34px;left:2px;width:26px;height:20px;border-radius:6px;background:#FFFDF6;border:2px solid var(--ink)"></div>'+
+    '<div id="vBed" style="position:absolute;left:6%;bottom:22%;width:30vw;max-width:190px;height:20vh;max-height:110px;cursor:pointer">'+
+      '<div style="position:absolute;bottom:0;width:100%;height:16%;background:#5C3D1F;border-radius:0 0 8px 8px;border:4px solid var(--ink);border-top:none"></div>'+
+      '<div style="position:absolute;bottom:14%;width:100%;height:44%;border-radius:10px;border:4px solid var(--ink);'+
+        'background:repeating-linear-gradient(45deg,#E8664F 0 14px,#F4EFE3 14px 28px)"></div>'+
+      '<div style="position:absolute;bottom:46%;left:3%;width:28%;height:26%;border-radius:8px;background:#FFFDF6;border:3px solid var(--ink)"></div>'+
     '</div>'+
     /* 바닥 러그 */
-    '<div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:110px;height:16px;border-radius:50%;'+
-      'background:#C4573F;opacity:.55"></div>';
-  wrap.appendChild(scene);
+    '<div style="position:absolute;bottom:8%;left:50%;transform:translateX(-50%);width:38vw;max-width:220px;height:4vh;max-height:22px;border-radius:50%;'+
+      'background:#C4573F;opacity:.5;filter:blur(.3px)"></div>'+
+    /* 상단 어둡게(가독성), 하단 액션바 배경용 그라데이션 */
+    '<div style="position:absolute;left:0;right:0;top:0;height:70px;background:linear-gradient(180deg,rgba(0,0,0,.45),transparent);pointer-events:none"></div>';
+  sheetBody.appendChild(wrap);
+
+  /* 상단 : 장소 이름표 + 닫기(헤더바를 꺼서 직접 그린다) */
+  var hdr=el('div');
+  hdr.style.cssText='position:absolute;top:0;left:0;right:0;display:flex;align-items:center;'+
+    'justify-content:space-between;padding:calc(10px + var(--safe-t,0px)) 14px 0';
+  hdr.innerHTML='<b style="color:#FFF3E0;font-family:var(--f-disp);font-size:20px;text-shadow:0 2px 4px rgba(0,0,0,.6)">🛖 오두막 쉼터</b>';
+  var xb=el('button',null,'✕');
+  xb.style.cssText='width:40px;height:40px;border-radius:50%;border:3px solid var(--ink);'+
+    'background:linear-gradient(180deg,#FF9C9C,#D42F2F);color:#fff;font-size:19px;box-shadow:0 4px 0 rgba(44,33,25,.3)';
+  xb.addEventListener('click',function(){
+    var left=Math.max(0, Math.ceil(((S.villageLockUntil||0)-nowMs())/1000));
+    if(left>0){ toast('아직 '+left+'초 더 쉬어야 해요 💤','warn',null,1600); return; }
+    closeSheet(); enterWorldHints();
+  });
+  hdr.appendChild(xb);
+  wrap.appendChild(hdr);
 
   /* 주인공을 러그 위, 침대와 벽난로 사이에 세운다 (장비 착용 화면과 같은 인형 캔버스 재사용) */
   try{
     var doll=heroDollCanvas();
-    doll.style.cssText='position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);'+
-      'width:104px;height:104px;pointer-events:none;filter:drop-shadow(0 4px 3px rgba(0,0,0,.35))';
-    scene.appendChild(doll);
+    doll.style.cssText='position:absolute;left:50%;bottom:14%;transform:translateX(-50%);'+
+      'width:min(36vw,190px);height:min(36vw,190px);pointer-events:none;filter:drop-shadow(0 6px 5px rgba(0,0,0,.4))';
+    wrap.appendChild(doll);
   }catch(e){}
 
-  var cap=el('div');
-  cap.style.cssText='padding:10px 14px 12px;color:#FFF3E0;font-size:14px;text-align:center;'+
-    'background:linear-gradient(180deg,#6B4E30,#5C4229)';
-  cap.innerHTML='🍂 어서 와요, 아늑한 나만의 쉼터예요. 여기서 숨 돌리고 다시 나가 봐요!';
-  wrap.appendChild(cap);
-  sheetBody.appendChild(wrap);
+  /* 하단 : 반투명 액션바 (참고 이미지의 하단 네비게이션처럼) */
+  var bar=el('div');
+  bar.style.cssText='position:absolute;left:0;right:0;bottom:0;padding:14px 14px calc(14px + var(--safe-b,0px));'+
+    'background:linear-gradient(180deg,transparent,rgba(20,13,8,.86) 45%);display:flex;flex-direction:column;gap:10px';
+  wrap.appendChild(bar);
 
-  scene.querySelector('#vBed').addEventListener('click',function(){
+  var cap=el('div');
+  cap.style.cssText='color:#FFE9C7;font-size:13px;text-align:center;text-shadow:0 1px 3px rgba(0,0,0,.7)';
+  cap.textContent='🍂 침대 = 체력 회복 · 벽난로 = 잠깐 쉬기 · 아래 버튼으로 바로 이동';
+  bar.appendChild(cap);
+
+  var row=el('div'); row.style.cssText='display:flex;gap:10px';
+  var lockLeft=Math.max(0, Math.ceil(((S.villageLockUntil||0)-nowMs())/1000));
+  var goDun=el('button','bigbtn', lockLeft>0? ('💤  '+lockLeft+'초만 더 쉬어요') : '🌲  던전 입구로');
+  goDun.style.cssText+=';flex:1;min-height:52px;font-size:16px';
+  if(lockLeft>0){ goDun.style.cssText+=';filter:grayscale(.5);opacity:.75'; }
+  goDun.addEventListener('click',function(){
+    var left=Math.max(0, Math.ceil(((S.villageLockUntil||0)-nowMs())/1000));
+    if(left>0){ SFX.no&&SFX.no(); toast('아직 '+left+'초 더 쉬어야 해요 💤','warn',null,1600); return; }
+    SFX.coin(); closeSheet(); enterWorldHints();
+  });
+  var goTw=el('button','bigbtn','🌌  무한의 탑');
+  goTw.style.cssText='flex:1;min-height:52px;font-size:16px;background:linear-gradient(180deg,#9B7BFF,#6B45D9);color:#fff;border-color:#4B2E9E';
+  goTw.addEventListener('click',function(){ SFX.coin(); openSheet('map',1); });
+  row.appendChild(goDun); row.appendChild(goTw);
+  bar.appendChild(row);
+
+  wrap.querySelector('#vBed').addEventListener('click',function(){
     var mh=maxHp();
     if(HP>=mh){ toast('이미 체력이 가득해요 🌙'); return; }
     HP=mh; needSync=1; SFX.coin();
     toast('폭신한 이불 속에서 포근하게 쉬었어요! 체력이 가득 찼어요 💤');
     syncHUD();
   });
-  scene.querySelector('#vFire').addEventListener('click',function(){
+  wrap.querySelector('#vFire').addEventListener('click',function(){
     SFX.coin(); toast('벽난로가 타닥타닥, 마음까지 따뜻해져요 🔥');
   });
-
-  var goDun=el('button','bigbtn','🌲  던전 입구로 가기');
-  goDun.addEventListener('click',function(){ SFX.coin(); closeSheet(); });
-  sheetBody.appendChild(goDun);
-
-  var goTw=el('button','bigbtn','🌌  무한의 탑 도전하기');
-  goTw.style.cssText='background:linear-gradient(180deg,#9B7BFF,#6B45D9);color:#fff;border-color:#4B2E9E';
-  goTw.addEventListener('click',function(){ SFX.coin(); openSheet('map',1); });
-  sheetBody.appendChild(goTw);
-
-  var info=el('div','info');
-  info.innerHTML='<b>쉼터</b>는 언제든 올 수 있는 나만의 공간이에요.<br>'+
-    '· <b>침대</b>를 톡 누르면 체력이 가득 차요<br>'+
-    '· <b>벽난로</b> 옆에서 잠깐 쉬어 가요<br>'+
-    '· 아래 버튼으로 <b>던전</b>이나 <b>별빛의 탑</b>으로 바로 이동할 수 있어요';
-  sheetBody.appendChild(info);
 }
 
 function renderTower(){
@@ -20577,21 +20620,25 @@ function beginPlay(){
   rebuildPets();
   if(!WD) enterChapter(S.chap|0);
   startLoop();
-  if(!S.tut){
-    S.tut=1; saveGame();
-    setTimeout(function(){ banner('도토리숲 대모험','왼쪽 아래를 밀어서 걸어 다녀요!',2400); },400);
-    setTimeout(function(){ toast('빨간 <b>공격</b> 버튼으로 몬스터를 물리쳐요','rare',null,5000); },3400);
-    setTimeout(function(){ toast('분홍 버튼을 <b>꾹 누르고 있으면</b> 몬스터를 삼켜요!','rare',null,6000); },9200);
-    setTimeout(function(){ toast('삼키면 <b>그 몬스터의 힘</b>이 내 것이 돼요','rare',null,5500); },15600);
-    setTimeout(function(){ toast('화면 끝 <b>노란 화살표</b>를 따라가면 목표가 나와요','rare',null,5500); },21400);
-  } else {
-    banner(BIOME[chapBiome(S.chap)].n, objectiveText(), 1300);
-  }
   homeHint();
   /* 2026-08-31 신규: 게임을 켤 때마다 숲으로 바로 던지지 않고 오두막 쉼터에서 시작한다.
      (유저 요청: "게임 켰을 때 쉼터에 캐릭터가 있어야지") 월드는 이미 위에서 초기화돼
-     뒤에 그대로 떠 있고, 쉼터에서 '던전 입구로 가기'를 누르면 그 월드로 바로 들어간다. */
+     뒤에 그대로 떠 있고, 쉼터에서 '던전 입구로 가기'를 누르면 그 월드로 바로 들어간다.
+     안내 배너·튜토리얼 토스트는 예전엔 여기서 바로 떴는데, 그러면 쉼터 화면 위에
+     겹쳐 보이니 실제로 숲에 들어가는 순간(enterWorldHints)으로 옮겼다. */
   setTimeout(function(){ openSheet('village',0); }, 60);
+}
+function enterWorldHints(){
+  if(!S.tut){
+    S.tut=1; saveGame();
+    setTimeout(function(){ banner('도토리숲 대모험','왼쪽 아래를 밀어서 걸어 다녀요!',2400); },200);
+    setTimeout(function(){ toast('빨간 <b>공격</b> 버튼으로 몬스터를 물리쳐요','rare',null,5000); },3200);
+    setTimeout(function(){ toast('분홍 버튼을 <b>꾹 누르고 있으면</b> 몬스터를 삼켜요!','rare',null,6000); },9000);
+    setTimeout(function(){ toast('삼키면 <b>그 몬스터의 힘</b>이 내 것이 돼요','rare',null,5500); },15400);
+    setTimeout(function(){ toast('화면 끝 <b>노란 화살표</b>를 따라가면 목표가 나와요','rare',null,5500); },21200);
+  } else {
+    banner(BIOME[chapBiome(S.chap)].n, objectiveText(), 1300);
+  }
 }
 $('tapstart').addEventListener('pointerdown',function(e){ if(e.cancelable) e.preventDefault(); beginPlay(); },{passive:false});
 
