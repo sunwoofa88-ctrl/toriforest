@@ -219,14 +219,20 @@ button{
 .quest .qbar{flex:1 1 20px;min-width:18px;max-width:130px;height:10px;border-radius:99px;background:#E7D7BC;border:2px solid var(--ink);overflow:hidden;display:block}
 .quest .qbar b{display:block;height:100%;width:0%;border-radius:99px;background:linear-gradient(180deg,#FFE47A,#E5A50F);transition:width .25s}
 .movehint{
-  position:absolute; left:calc(var(--safe-l) + clamp(8px,3vw,26px)); bottom:calc(var(--safe-b) + 54px);
-  font-size:clamp(11px,3vw,13px);color:#fff;text-align:center;line-height:1.3;
-  text-shadow:0 2px 0 rgba(44,33,25,.9),0 0 8px rgba(0,0,0,.55);
-  background:rgba(28,20,14,.34);border-radius:14px;padding:6px 12px;
-  border:2px dashed rgba(255,255,255,.5);pointer-events:none;
+  /* ★ 2026-09-01 — 실측 결과 #moveHint 의 offsetParent 가 화면 전체가 아니라 .dock
+     자신이었다(DOM상 .dock 안에 들어있다). 그래서 bottom:54px 도, 한 번 고쳐 본 bottom:28%
+     도 전부 '.dock 자신의 높이(폰 175px~태블릿 244px)' 기준으로 계산되어 스킬바 안에
+     그대로 파묻혔다(사용자 제보 "글씨가 잘 안보인다" — 실제로 스킬 아이콘에 100% 가려짐).
+     bottom:100% 는 부모(.dock) 높이가 얼마든 정확히 그 위쪽 경계에 붙으므로, 어떤
+     해상도에서도 항상 스킬바 바로 위 여백에 뜬다. */
+  position:absolute; left:calc(var(--safe-l) + clamp(8px,3vw,26px)); bottom:calc(100% + 10px);
+  font-size:clamp(13px,3.6vw,16px);color:#fff;text-align:center;line-height:1.3;
+  text-shadow:0 2px 0 rgba(44,33,25,.95),0 0 8px rgba(0,0,0,.65);
+  background:rgba(28,20,14,.72);border-radius:14px;padding:7px 13px;
+  border:2px dashed rgba(255,255,255,.65);pointer-events:none;
   animation:hintFade 1.6s ease-in-out infinite;
 }
-@keyframes hintFade{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes hintFade{0%,100%{opacity:.84}50%{opacity:1}}
 .movehint.gone{display:none}
 .stage-tag{
   align-self:center;margin-top:2px;
@@ -11254,12 +11260,9 @@ function layout(){
   initAmb();
   /* 토스트를 HUD 실제 높이 바로 아래에 붙인다 (화면 크기와 무관하게 안 겹치도록) */
   try{
-    var hudEl=document.querySelector('.hud'), tEl=document.getElementById('toasts');
+    repositionToasts();
+    var hudEl=document.querySelector('.hud');
     var fb=frameEl.getBoundingClientRect();
-    if(hudEl&&tEl){
-      var hb=hudEl.getBoundingClientRect();
-      tEl.style.top=Math.round(hb.bottom-fb.top+8)+'px';
-    }
     /* 안내 화살표가 HUD·버튼 뒤로 숨지 않도록 '진짜 빈 화면' 영역을 재어 둔다 */
     var dkEl=document.querySelector('.dock');
     UI_SAFE.t = hudEl? Math.round(hudEl.getBoundingClientRect().bottom-fb.top)+10 : 74;
@@ -18080,6 +18083,24 @@ function pill(txt,src,short){
 }
 
 function nowMs(){ try{ return performance.now(); }catch(e){ return 0; } }
+/* ★ 2026-09-01 — 실측 발견 : 토스트("빨간 공격 버튼으로...")가 시트(가방 등) 위로
+   그대로 겹쳐 보였다(사용자 제보 "글씨가 잘 안보인다"). 원인 : layout() 이 #toasts 에
+   인라인 top(=HUD 바로 아래)을 박아 두는데, 시트가 열려도 이 인라인 값은 그대로 남는다.
+   인라인 스타일은 CSS 우선순위를 전부 이기므로, body.sheeting 이 노리는
+   'top:auto;bottom:14px' 규칙 중 top 쪽이 죽어 컨테이너가 위에서부터 늘어나 버렸다.
+   시트가 열리고 닫힐 때마다 이 함수로 다시 계산해서, 열려 있으면 인라인 top 을 비워
+   CSS(하단 배치)가 이기게 하고, 닫히면 원래의 'HUD 바로 아래' 로 되돌린다. */
+function repositionToasts(){
+  try{
+    if(!toastBox) return;
+    if(document.body.classList.contains('sheeting')){ toastBox.style.top=''; return; }
+    var hudEl=document.querySelector('.hud');
+    if(hudEl&&frameEl){
+      var fb=frameEl.getBoundingClientRect(), hb=hudEl.getBoundingClientRect();
+      toastBox.style.top=Math.round(hb.bottom-fb.top+8)+'px';
+    }
+  }catch(e){}
+}
 var sheetOpenedAt=-1e9;
 function openSheet(kind,tab){
   /* 메뉴를 열 때 손에 남아 있던 입력을 전부 놓는다.
@@ -18090,6 +18111,7 @@ function openSheet(kind,tab){
   sheetOpenedAt=nowMs();
   sheetEl.classList.toggle('sheetVillage', kind==='village');
   sheetEl.classList.add('on'); document.body.classList.add('sheeting');
+  repositionToasts();
   sheetOpen=true; stopLoop(); saveGame();
   renderSheet();
 }
@@ -18099,6 +18121,7 @@ function closeSheet(){
   setTimeout(function(){
     sheetIn.classList.remove('out'); sheetEl.classList.remove('on');
     document.body.classList.remove('sheeting');
+    repositionToasts();
     sheetOpen=false; curSheet=null; startLoop();
   },200);
 }
@@ -20379,30 +20402,58 @@ function renderVillage(){
   /* ★ 2026-08-31 신규 — "침대에 누워자는 기능의 버튼도 추가해줘" 요청: 소품이 된
      침대를 직접 탭해도 자지만(fn 태그), 눈에 잘 띄는 전용 버튼도 따로 둔다.
      지금 방에 "사용 중"인 침대가 있을 때만 보인다(다른 방으로 옮기면 그 방에서만). */
+  /* ★ 2026-09-01 — 사용자 제보 "버튼들이 너무 쓸데없이 가로로 긴것들이 있다" (던파
+     모바일처럼 UI 여백을 실제 정보로 채우라는 요청) 실측 : 침대에 눕기 버튼은 글자
+     3어절인데 폭이 화면 전체(약 900px, 내용 대비 8배 이상)였다 — 빈 색만 깔린 채였다.
+     ① 침대 버튼은 .bigbtn 공통 클래스(다른 화면 다수가 씀 — width:100% 유지가 안전)를
+        건드리지 않고, 이 인스턴스만 내용 크기로 줄이고 가운데 둔다.
+     ② 던전 입구·별빛의 탑 버튼은 폭을 유지하되(주 동선이라 큰 탭 영역이 맞다), 빈
+        공간을 채우도록 그 던전의 실제 몬스터 초상화를 넣는다 — 새 그림을 그리지 않고
+        이미 있는 AI 그림(종족 스프라이트)을 재사용한다(절대규칙 : AI 그림만 사용). */
   try{
     var Dfb=decorState();
     var bedPos=Dfb.pos[Dfb.use.bed];
     if(bedPos && bedPos.room===R.cur){
       var sleepBtn=el('button','bigbtn','🛏️  침대에 눕기');
       sleepBtn.style.cssText='min-height:44px;font-size:14px;background:linear-gradient(180deg,#8FA7FF,#4C63C9);'+
-        'color:#fff;border-color:#2E3F8F';
+        'color:#fff;border-color:#2E3F8F;width:auto;align-self:center;padding-left:22px;padding-right:22px';
       sleepBtn.addEventListener('click',function(e){ e.stopPropagation(); villageSleep(wrap); });
       bar.appendChild(sleepBtn);
     }
   }catch(e){}
 
+  /* 버튼 안에 넣을 작은 원형 몬스터 초상화 — 이미 굽는 종족 스프라이트를 그대로 재사용 */
+  function navThumb(mobKey){
+    try{
+      var mc=ensureMob(mobKey); if(!mc) return null;
+      var ic=iconTight(mc.n, 40, 'navthumb_'+mobKey);
+      var wrap2=el('div'); wrap2.style.cssText='width:40px;height:40px;border-radius:50%;overflow:hidden;'+
+        'background:rgba(255,255,255,.24);border:2px solid rgba(255,255,255,.75);flex:none;'+
+        'display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,.3)';
+      wrap2.appendChild(ic);
+      return wrap2;
+    }catch(e){ return null; }
+  }
+
   var row=el('div'); row.style.cssText='display:flex;gap:10px';
   var lockLeft=Math.max(0, Math.ceil(((S.villageLockUntil||0)-nowMs())/1000));
-  var goDun=el('button','bigbtn', lockLeft>0? ('💤  '+lockLeft+'초만 더 쉬어요') : '🌲  던전 입구로');
+  var goDun=el('button','bigbtn');
   goDun.style.cssText+=';flex:1;min-height:52px;font-size:16px';
   if(lockLeft>0){ goDun.style.cssText+=';filter:grayscale(.5);opacity:.75'; }
+  else { var dunThumb=navThumb(chapBoss(S.chap)); if(dunThumb) goDun.appendChild(dunThumb); }
+  goDun.appendChild(el('span', null, lockLeft>0? ('💤  '+lockLeft+'초만 더 쉬어요') : '🌲  던전 입구로'));
   goDun.addEventListener('click',function(){
     var left=Math.max(0, Math.ceil(((S.villageLockUntil||0)-nowMs())/1000));
     if(left>0){ SFX.no&&SFX.no(); toast('아직 '+left+'초 더 쉬어야 해요 💤','warn',null,1600); return; }
     SFX.coin(); closeSheet(); enterWorldHints();
   });
-  var goTw=el('button','bigbtn','🌌  별빛의 탑');
+  var goTw=el('button','bigbtn');
   goTw.style.cssText='flex:1;min-height:52px;font-size:16px;background:linear-gradient(180deg,#9B7BFF,#6B45D9);color:#fff;border-color:#4B2E9E';
+  try{
+    var twThumb=navThumb(chapBoss(twChap(Math.max(1,twBest()+1))));
+    if(twThumb) goTw.appendChild(twThumb);
+  }catch(e){}
+  goTw.appendChild(el('span', null, '🌌  별빛의 탑'));
   goTw.addEventListener('click',function(){ SFX.coin(); openSheet('map',1); });
   row.appendChild(goDun); row.appendChild(goTw);
   bar.appendChild(row);
