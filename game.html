@@ -13885,100 +13885,33 @@ function heroPoseSpr(pk){
   SPR.heroPose[pk]=o;
   return o;
 }
-/* == 손 그림(AI) ==============================================
-   Spine 의 hand_front 슬롯에 해당한다. 마젠타 봉을 기준자로 쓰고
-   그 봉을 지우면 손가락이 자루를 감싸는 모양이 '그림으로' 남는다.
-   예전엔 몸통에서 타원으로 오려 쓴 가짜였고, 그래서 얼룩만 졌다. */
-var HAND_ART={ '':'hand_bare', light:'hand_leather', scale:'hand_leather',
-               dark:'hand_steel', plate:'hand_steel', royal:'hand_steel',
-               mage:'hand_magic' };
-/* 손 그림의 주먹 높이 = 실측 주먹 지름의 몇 배로 그릴지 */
-/* 2026-08-31 — 위 스윕(1.3~3.4)은 확대된 클로즈업 크롭으로 비교해 2.6을 골랐는데,
-   사용자 제보("주먹이 말도안되게 큰데?")로 실제 인게임 줌 배율 그대로 다시
-   렌더링해 비교해보니 2.6은 얼굴·상체 절반을 덮을 만큼 명백히 과대했다.
-   실제 배율로 6개 후보(1.0/1.3/1.6/1.9/2.2/2.6)를 재스윕한 결과 1.6이 정답 —
-   1.0·1.3은 자루가 주먹 옆으로 삐져나오고, 1.9 이상부터 얼굴을 침범하기
-   시작한다(/tmp/handk2_sheet.png, /tmp/fist_size_check3.png 실측 비교). */
-var HAND_K=1.6;
-/* 2026-08-31 재생성 — 기존 손 그림이 뭉툭한 덩어리라 엄지·손가락 마디가
-   전혀 안 보였음(사용자 지적으로 실측 확인). 핀터레스트/구글 이미지에서
-   "주먹이 자루를 감싸 쥔" 레퍼런스를 찾아(엄지가 위쪽을 덮고, 손가락 마디
-   3~4개가 아래로 이어지고, 자루가 주먹 위·아래로 살짝 보이는 형태) 그 특징을
-   프롬프트에 반영해 제미나이로 재생성 → slice_paw.py와 동일한 로직(마젠타
-   봉 검출 → 흰 배경 플러드필 제거 → 주먹 행 탐지 → 최대 연결성분)으로
-   재슬라이스. 옛 그림은 알파 내용이 캔버스 가장자리까지 꽉 차 있었다(패딩
-   0%, HAND_K가 그걸 전제로 튜닝돼 있음) — 새 그림도 동일하게 거의 패딩 없이
-   주먹 bbox 그대로 잘랐다(margin 1.02배). */
-var HAND_META={"hand_bare": {"gx": 0.5062, "gy": 0.5, "w": 160, "h": 147, "ar": 1.0884, "rodW": 0.2188}, "hand_leather": {"gx": 0.5127, "gy": 0.5, "w": 158, "h": 147, "ar": 1.0748, "rodW": 0.2215}, "hand_steel": {"gx": 0.4864, "gy": 0.4977, "w": 184, "h": 214, "ar": 0.8598, "rodW": 0.1957}, "hand_magic": {"gx": 0.5191, "gy": 0.5, "w": 157, "h": 138, "ar": 1.1377, "rodW": 0.2293}};
-/* ★ 2026-08-31 최종 — 사용자가 여섯 번째로 같은 지적("캐릭터 왼쪽이 오른손이잖아",
-   "오른손 왼손도 구분 못하냐") 반복 → 이번엔 감이 아니라 확정 소스로 검증했다.
-   Emojipedia 의 "Oncoming Fist"(👊, U+1F44A) 문서: "Shown as a right hand on all
-   supported platforms." — Apple/Google/Samsung 3사 실제 렌더를 각 700px로 확대해
-   직접 픽셀 비교(엄지=매끈한 단일 덩어리, 4손가락=마디선 있는 다중 구획) → 3사
-   전부 손등(주먹)이 정면일 때 "엄지가 오른쪽, 손가락 마디가 왼쪽~중앙" 이었다.
-   반면 우리 hand_bare/leather/magic 3장은 전부 "엄지 왼쪽, 손가락 마디 오른쪽"
-   으로 그려져 있었다 — 왼손 형태다. 유일하게 hand_steel(지난 세션에 반전됨)만
-   실제로는 이미 "엄지 오른쪽"으로 올바른 방향이었다 — 즉 지난 세션의 반전은
-   거꾸로였다(다른 3장에 맞춰 steel 하나를 억지로 왼손화한 것). 이번에 진짜
-   기준(이모지 실측)에 맞춰 bare/leather/magic 3장을 좌우 반전하고 steel은
-   그대로 둔다 — 이제 4장 전부 "엄지 오른쪽" 오른손 형태로 통일된다.
-   (검증 이미지: /tmp/hand_steel_vs_bare_big.png, /tmp/hand_5way_compare.png) */
-/* ★ 2026-08-31 — 사용자 제보("왼손 오른손 그립 방향과 엄지 방향, 손 모양 구분
-   못하냐")로 4종(맨손/가죽/강철/마법) 손 그림을 나란히 놓고 비교해보니, hand_steel
-   하나만 다른 3장과 손 모양이 좌우로 뒤집혀 있었다(엄지·손등 돌기 위치가 반대
-   손처럼 보임) — 같은 제미나이 시트 안에서 4칸을 한 번에 생성했는데 4번째(마법)는
-   맞고 3번째(강철) 칸만 좌우가 반전돼 나온 것으로 보임(생성 결과물 자체의 오류,
-   슬라이싱 로직 문제 아님). hand_steel.webp 파일 자체를 좌우 반전해서 나머지
-   3장과 손 모양이 일치하도록 교정하고, gx 도 반전에 맞춰 1-gx 로 갱신
-   (0.5136→0.4864, gy는 좌우 반전에 영향 안 받아 그대로). */
-var HAND_BARE=[HERO_FIST_DEF[0],HERO_FIST_DEF[1]], HAND_ARM=HAND_BARE;
-/* 주먹 자리의 실제 색을 주인공 그림에서 뽑는다 — 맨몸이면 털색, 갑옷이면 건틀릿색 */
-var _HANDCOL=null, _HANDKEY='';
-function heroHandColor(){
-  var sp=SPR.hero&&SPR.hero.idle; if(!sp) return '#E8843C';
-  var h=heroHand();
-  var key=(sp.width|0)+'_'+h[0]+'_'+h[1]+'_'+((typeof eqAt==='function'&&eqAt('a'))||'');
-  if(_HANDKEY===key && _HANDCOL) return _HANDCOL;
-  try{
-    var W2=sp.width, H2=sp.height, R=Math.max(4, Math.round(W2*0.035));
-    var x=Math.round(W2*0.5 + W2*h[0]) - R, y=Math.round(H2*BASE_F + W2*h[1]) - R;
-    var n=R*2, c=nc(n,n), g=c.getContext('2d');
-    g.drawImage(sp, -x, -y);
-    var d=g.getImageData(0,0,n,n).data;
-    var sr=0,sg=0,sb=0,k=0;
-    for(var i=0;i<n*n;i++){
-      var a=d[i*4+3]; if(a<200) continue;
-      var r=d[i*4], gg=d[i*4+1], b=d[i*4+2];
-      var lum=(r*0.3+gg*0.59+b*0.11)/255;
-      if(lum<0.30) continue;                 /* 외곽선·손가락 선은 뺀다 */
-      sr+=r; sg+=gg; sb+=b; k++;
-    }
-    _HANDKEY=key;
-    if(k<6) return _HANDCOL='#E8843C';
-    /* ★ lite()/dark() 는 hx() 로 16진수만 읽는다. rgb(...) 문자열을 넘기면
-         엉뚱한 색(남색)이 나온다 — 실제로 손이 남색 덩어리로 나왔다. */
-    function _h2(v){ v=Math.max(0,Math.min(255,Math.round(v))); return (v<16?'0':'')+v.toString(16); }
-    return _HANDCOL='#'+_h2(sr/k)+_h2(sg/k)+_h2(sb/k);
-  }catch(e){ return '#E8843C'; }
-}
-/* 자루를 감싸 쥔 손 — 무기 위에 얹어 '쥐고 있다' 를 완성한다.
-   ★ 무기를 몸 뒤에 넣으면 자루가 통째로 가려져 '뒤에 떠 있는' 것처럼 보이고,
-     앞에 그리면 손이 자루에 가려진다. 그래서 무기는 앞에 그리고
-     그 위에 주먹만 다시 그린다 — 레퍼런스의 '앞손 레이어' 방식이다. */
-function drawGripHand(g2, x, y, r, col, ang){
-  var OC='#2C2119';
-  g2.save(); g2.translate(x,y); g2.rotate(ang||0);
-  g2.beginPath(); g2.ellipse(0, 0, r, r*0.92, 0, 0, 6.2832);
-  var lg=g2.createLinearGradient(0,-r,0,r);
-  lg.addColorStop(0, lite(col,.22)); lg.addColorStop(1, dark(col,.20));
-  g2.fillStyle=lg; g2.fill();
-  g2.lineWidth=Math.max(1.4, r*0.30); g2.strokeStyle=OC; g2.stroke();
-  /* 손가락 마디 2줄 */
-  g2.lineWidth=Math.max(1, r*0.20); g2.strokeStyle=rgba(dark(col,.45),.85);
-  g2.beginPath(); g2.moveTo(-r*0.62,-r*0.20); g2.lineTo(r*0.62,-r*0.20); g2.stroke();
-  g2.beginPath(); g2.moveTo(-r*0.58, r*0.26); g2.lineTo(r*0.58, r*0.26); g2.stroke();
-  g2.restore();
-}
+/* ★ 2026-09-01 — 예전 손 오버레이 자산(HAND_ART/HAND_META/HAND_K/HAND_BARE/
+   HAND_ARM/HAND_X/HAND_Y, heroHandColor()/drawGripHand()/handTinted()/
+   heroElemCol(), art/hand_bare·leather·steel·magic.webp 4장) 완전 삭제.
+   v17에서 이미 "더 이상 실제로 그려지지 않는 죽은 코드/자산"이라 결론 냈던
+   항목(drawHandOver()가 자세 그림 경로 또는 HERO_GRIP 클립 경로에서 항상
+   먼저 return하고, 이 경로로는 절대 안 떨어진다는 게 그때 이미 확인됨) —
+   전체감사(2026-09-01)가 "재조사 필요"로 다시 플래그해서, 이번에 처음부터
+   다시 실측 확인했다.
+   재확인 방법(추측 아님, 실제 호출부 추적): drawHandOver()의 두 번째 경로
+   조건 `G && G.fx0!==undefined && sp && hx0!==undefined`에서 G는
+   HERO_GRIP['heroW_'+cls] 또는 HERO_GRIP.bare — HERO_GRIP에 등록된 7개 키
+   (heroW_light/plate/mage/dark/royal/scale/bare)가 전부 fx0을 갖고 있고,
+   heroArmorCls()는 자기 반환값을 `artOf('heroW_'+cls)`로 미리 검증하므로
+   이 7개 키 밖의 값을 절대 못 돌려준다 — 즉 G.fx0은 항상 정의돼 있다. 실제
+   호출부 2곳(17335줄 drawHero, 18213줄 heroDollCanvas)도 hx0을 항상 숫자
+   식으로 넘겨 undefined일 수 없다. 그래서 세 번째 경로(구 손 그림 오버레이)는
+   game.html 안에서 도달 불가능하다는 게 100% 확정됐다(T.dbg.drawHandOver
+   디버그 훅만 hx0을 생략하는데, 이건 실제 게임 진행이 아니라 테스트 전용
+   호출이다). art/hand_*.webp 4장은 build.py가 art/ 폴더를 통째로 스캔해
+   무조건 번들에 넣는 방식이라, 코드에서 참조를 없애는 것만으론 빌드 용량이
+   안 줄어든다 — 그래서 이번엔 파일 자체도 삭제했다(slice_paw.py는 이
+   4장을 만들어낸 1회성 생성 스크립트일 뿐 build.py가 호출하지 않으므로
+   냅둬도 안전, art/hand_meta.json도 같이 정리 — 둘 다 game.html 어디서도
+   더는 참조 안 됨, grep으로 확인).
+   검증: node tests/t_audit3.js 48/48, node t_regress.js 21/25(기존과 동일),
+   node t_nan.js 477회 클린 — 전부 변동 없음(애초에 실행되지 않던 코드라
+   삭제해도 동작이 달라질 수 없다는 걸 회귀 결과로도 재확인). */
 /* ══ 주먹을 '그리는 그림에서 직접' 잰다 ═══════════════════════════════
    표를 미리 적어 두면 그림이 바뀌거나(갑옷 교체·베이크) 캔버스 여백이
    달라지는 순간 어긋난다. 실제로 그렇게 어긋나 있었다 — 원본 파일에서
@@ -14060,45 +13993,6 @@ function heroFist(){
   return _FIST_CACHE;
 }
 function heroHand(){ return heroFist(); }
-/* == 앞손 : 무기 위에 AI 손 그림을 얹어 자루를 감싼다 =============
-   손 그림은 '세로 봉을 쉜' 상태로 그려졌고 쉜는 점이 그림 정중앙이다.
-   그래서 자루 방향(world)에 맞춰 그대로 돌려 놓기만 하면 된다.
-     ang : 자루가 향하는 방향(라디안, 캔버스 좌표)
-     자루가 위(-90°)일 때 손 회전 0 → 회전량 = ang + π/2 */
-/* 갑옷 원소색은 몸통을 목 아래로 물들인다(heroGeared). 손도 몸의 일부라
-   같은 색을 같은 세기로 입혀야 한다 — 안 하면 손만 원래 색으로 떠 보인다. */
-var _HANDTINT={}, _HANDTINT_K='';
-function handTinted(im, col, artKey){
-  if(!col) return im;
-  /* ★ 캐시 열쇠에 '손 그림 이름'이 빠져 있어, 원소색이 같으면 갑옷을 바꿔도
-     맨 처음 물들인 손(가죽)이 계속 나왔다 — 6종이 전부 갈색으로 보인 진짜 원인. */
-  var k=(artKey||'')+'|'+col;
-  if(_HANDTINT_K===k && _HANDTINT[k]) return _HANDTINT[k];
-  try{
-    var W2=im.width||im.naturalWidth, H2=im.height||im.naturalHeight;
-    var c=nc(W2,H2), g3=c.getContext('2d');
-    g3.drawImage(im,0,0,W2,H2);
-    var t=nc(W2,H2), tg=t.getContext('2d');
-    tg.fillStyle=col; tg.fillRect(0,0,W2,H2);
-    tg.globalCompositeOperation='destination-in'; tg.drawImage(c,0,0);
-    /* ★ 몸통은 'color'(색상 치환) 0.38 로 물들이지만, 손은 그러면 안 된다.
-       은색 건틀릿·금색 장갑처럼 채도가 낮거나 고유색이 강한 재질은 색상 치환을
-       하면 재질이 통째로 사라진다(실제로 6종이 전부 갈색 가죽으로 보였다).
-       그래서 손은 '엷은 색 덮기(source-atop 0.16)' 로만 원소색 기미를 준다. */
-    g3.save(); g3.globalCompositeOperation='source-atop';
-    g3.globalAlpha=0.16; g3.drawImage(t,0,0); g3.restore();
-    _HANDTINT_K=k; _HANDTINT[k]=c;
-    var _n=0,_q; for(_q in _HANDTINT) _n++;
-    if(_n>10) _HANDTINT={ };
-    return c;
-  }catch(e){ return im; }
-}
-function heroElemCol(){
-  var id=(typeof eqAt==='function')? eqAt('a') : null;
-  var E=id? EQUIP[id] : null;
-  if(!E || !heroArmorCls()) return null;
-  return E.col || null;
-}
 /* ══ 앞손 조각 ════════════════════════════════════════════════════
    갑옷 그림은 '봉을 쥔 손'이 이미 그려져 있다. 그러면 딴 손 그림을 얹을 게
    아니라 그 손을 그대로 오려서 무기 위에 덮는 게 맞다 — 화풍·색·크기가
@@ -14153,27 +14047,13 @@ function drawHandOver(g2, x, y, sz, ang, hx0, hy0, sw, sh, wsc, swinging){
     g2.restore();
     return;
   }
-  var key=HAND_ART[cls]||'hand_bare';
-  var im=artOf(key), m=HAND_META[key];
-  if(!im||!m){ drawGripHand(g2,x,y,sz*0.045,heroHandColor(),ang); return; }
-  im=handTinted(im, heroElemCol(), key);
-  var F=heroFist();
-  /* 손 그림은 '자루를 감싼 손가락'만 남겼다(손바닥·손목은 잘라 냈다 — 그게 가슴을
-     덮는 크림색 덩어리의 정체였다). 세로 길이를 실측 주먹 지름에 맞춘다.
-     ★ 2026-08-31 — 사용자 실측 제보("주먹이랑 검 맞닿는 부분 오류") : 검류 공격 중
-     무기 그림만 _swAtk(1.55배)로 커지는데 이 손 그림은 그대로라, 커진 자루 굵기와
-     손가락 크기가 안 맞아 손과 칼자루 사이에 틈/어긋남이 생겼다(실측 스크린샷
-     /tmp/frozen2_*_hilt.png 로 확인). 손도 같은 배율(wsc)만큼 같이 키워서
-     자루 굵기와 손 크기가 항상 맞도록 한다. */
-  var _hwsc=wsc||1;
-  var hh = sz * F[2] * HAND_K * _hwsc;
-  var ww = hh * m.ar;
-  /* 자루가 지나가는 선(m.gx)이 주먹 중심에 오도록 놓는다 */
-  g2.save(); g2.translate(x,y); g2.rotate(ang + 1.5708);
-  g2.drawImage(im, -ww*m.gx, -hh*m.gy, ww, hh);
-  g2.restore();
+  /* 위 두 경로 중 하나가 항상 return한다(HERO_GRIP이 heroArmorCls()의 모든
+     가능한 반환값 + bare를 커버하고, 실제 호출부는 hx0을 항상 숫자로 넘김 —
+     2026-09-01 실측 확정, 이 함수 앞부분의 대형 주석 참고). 여기 도달하는
+     경우는 hx0을 일부러 생략한 디버그 호출뿐이라, 예전처럼 별도 손 그림
+     오버레이를 그리는 대신 조용히 아무것도 안 그리고 끝낸다(그림이 없어도
+     절대 깨지지 않는다는 이 프로젝트의 기존 원칙 그대로). */
 }
-var HAND_X=HAND_BARE[0], HAND_Y=HAND_BARE[1];
 /* 2026-08-31 사용자 요청("스킬도 좀 더 이펙트 화려하게 해줘")로 0.50→0.64 상향.
    더 크게 올리지 않은 이유: 이 상수는 근접뿐 아니라 nova/orbit/laser 등 원소 스킬까지
    전부 공유하는 전역 배율이라(13885줄 위 문단 참고), 몬스터 여럿과 동시 전투 시
@@ -22201,7 +22081,7 @@ window.__TORI = { onBack:function(){ try{ return onBackKey(); }catch(e){ return 
   get W_TYPE_HOLD(){ return W_TYPE_HOLD; }, heroDollCanvas:function(){ return heroDollCanvas(); },
   wepGrip:function(id){ return wepGrip(id); }, heroHand:function(){ return heroHand(); },
   drawHandOver:function(g,x,y,sz,a){ return drawHandOver(g,x,y,sz,a); },
-  HAND_META:HAND_META, HERO_FIST:HERO_FIST,
+  HERO_FIST:HERO_FIST,
   eqSprWorld:function(id){ return eqSprWorld(id); }, get BASE_F(){ return BASE_F; },
   get SPR(){ return SPR; },
   chapKillNeed:function(c){ return chapKillNeed(c); }, prog:function(){ return prog(); },
@@ -22209,9 +22089,6 @@ window.__TORI = { onBack:function(){ try{ return onBackKey(); }catch(e){ return 
   refreshHeroArt:function(){ try{ return refreshHeroArt(); }catch(e){ return null; } },
   __armCls:function(e){ try{ return ARM_CLASS[(ARM_TYPE[e.tn]||{}).id]||null; }catch(x){ return null; } },
   __hac:function(){ return heroArmorCls(); },
-  __hkey:function(){ return HAND_ART[heroArmorCls()]||'hand_bare'; },
-  __hcol:function(){ return heroElemCol(); },
-  get HAND_ART(){ return HAND_ART; },
   quitApp:function(){ try{ return quitApp(); }catch(e){ return false; } },
   get S(){return S;}, get G(){return G;}, get P(){return P;}, EN:EN,
   doAttack:doAttack, doUlt:doUlt, beginPlay:beginPlay, openSheet:openSheet, closeSheet:closeSheet,
