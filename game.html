@@ -499,6 +499,7 @@ body.sheeting #toasts{top:auto;bottom:14px}
 }
 .sheet.on{display:flex}
 .sheet-in{
+  position:relative;
   width:100%;max-width:640px;max-height:92%;
   background:linear-gradient(180deg,#FFFBF0,#FFF1D4);
   border:4px solid var(--ink);border-bottom:0;
@@ -506,6 +507,13 @@ body.sheeting #toasts{top:auto;bottom:14px}
   display:flex;flex-direction:column;overflow:hidden;
   animation:sheetIn .34s cubic-bezier(.2,1.3,.35,1);
   padding-bottom:var(--safe-b);
+}
+/* #sheetScrollThumb 를 sheet-bd 기준이 아니라 이 sheet-in 기준으로 절대배치
+   하기 위한 좌표계(포지셔닝 컨텍스트)일 뿐, 레이아웃(flex)엔 영향 없음. */
+#sheetScrollThumb{
+  position:absolute; right:5px; width:18px; border-radius:99px;
+  background:var(--acorn); border:1.5px solid var(--acorn-dk);
+  opacity:.9; pointer-events:none; display:none; z-index:5;
 }
 @keyframes sheetIn{from{transform:translateY(100%)}to{transform:none}}
 .sheet-in.out{animation:sheetOut .22s ease forwards}
@@ -538,7 +546,22 @@ body.sheeting #toasts{top:auto;bottom:14px}
 }
 .tab.on{background:linear-gradient(180deg,#FFF9EA,#FFEFCB);transform:translateY(-2px);box-shadow:0 -3px 0 var(--star) inset}
 
-.sheet-bd{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 12px;overscroll-behavior:contain}
+.sheet-bd{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 28px 12px 16px;overscroll-behavior:contain}
+/* ★ 2026-09-01 — 사용자 제보 "꾸미기 상점에 스크롤 공간을 만들고 시인성 좋은
+   스크롤바를 달아달라": 목록이 있는 시트(꾸미기·가방·펫·장비·대장간·도감·지도
+   등) 전부가 이 .sheet-bd(=#sheetBody) 하나를 공유해서 그리므로(파일 전체에서
+   overflow-y:auto 는 이 규칙 하나뿐 — grep으로 확인), 여기 한 곳만 고치면
+   "나머지 펫 등에도" 자동으로 적용된다.
+   처음엔 ::-webkit-scrollbar 로 브라우저 기본 스크롤바 자체를 굵게/도토리색
+   으로 칠하려 했지만, 실제로 렌더링해서 스크린샷으로 검증해보니(플레이라이트
+   헤드리스 크로뮴) 스크롤 중에도 전혀 안 보였다 — 오버레이 스크롤바는 브라우저/
+   OS 마다 언제 나타나고 사라지는지가 달라서 "항상 또렷하게 보인다"를 보장할 수
+   없다는 뜻. 그래서 브라우저 기본 스크롤바는 아예 숨기고(아래), 대신 우리가
+   직접 그리는 막대(#sheetScrollThumb, updateSheetScrollThumb())를 항상 켜둔다
+   — 이러면 실제 기기가 뭐든 100% 우리가 그린 대로 보인다. 오른쪽 여백도 12→16px
+   로 넓혀 카드가 그 막대에 바짝 붙지 않게 했다. */
+.sheet-bd::-webkit-scrollbar{display:none}
+.sheet-bd{scrollbar-width:none}
 /* 오두막 쉼터 : 카드형 시트가 아니라 화면을 꽉 채우는 '장소'처럼 보이게 한다.
    (참고 이미지처럼 팝업 느낌을 빼고, 배경이 화면 전체를 덮게) */
 .sheet.sheetVillage .sheet-in{max-width:none;width:100%;height:100%;max-height:100%;border-radius:0;border:0;animation:none}
@@ -560,7 +583,7 @@ body.sheeting #toasts{top:auto;bottom:14px}
   .sheet-hd h2{font-size:19px!important}
   .sheet-hd .xbtn{width:38px;height:38px;font-size:19px}
   .tab{padding:6px 14px;min-height:38px;font-size:15px}
-  .sheet-bd{padding:6px 10px 8px}
+  .sheet-bd{padding:6px 24px 8px 10px}
   .sec-t{margin:8px 0 5px;font-size:16px}
   .info{padding:8px 11px;font-size:14px;line-height:1.45}
   .bigbtn{padding:11px;font-size:17px}
@@ -614,6 +637,9 @@ body.sheeting #toasts{top:auto;bottom:14px}
 .grid.g2{grid-template-columns:repeat(2,1fr)}
 @media (min-width:520px){.grid.g4{grid-template-columns:repeat(5,1fr)}}
 @media (max-width:340px){.grid.g4,.grid.g3{grid-template-columns:repeat(2,1fr)}}
+/* 쉼터 꾸미기 전용 — 카드 사이 간격을 넓혀 손가락으로 스크롤할 여백을 확보한다
+   (공유 .grid.g3 규칙은 그대로 두고 이 화면에서만 gap을 키운다). */
+.decorgrid{gap:16px}
 /* 지도는 5칸 고정이라 좁은 화면에서 글자가 넘친다 → 글자만 줄인다 */
 @media (max-width:430px){
   .grid.g5{grid-template-columns:repeat(4,1fr)}   /* 좁으면 4칸 : 글자를 줄이지 않기 위해 */
@@ -953,7 +979,7 @@ body.sheeting #toasts{top:auto;bottom:14px}
   .tab{ padding:3px 11px;min-height:28px;font-size:13px; }
   .sheet-foot{ padding:3px 8px max(3px, var(--safe-b));border-top-width:2px; }
   .closebar{ padding:5px;font-size:14px;border-width:2px;border-radius:10px; }
-  .sheet-bd{ padding:5px 8px 6px; }
+  .sheet-bd{ padding:5px 26px 6px 8px; }
 }
 /* 아주 짧은 화면 : 아래 닫기바를 빼고 위 ✕ 만 쓴다. 이 크기에서 82px 은 내용의 절반이다 */
 @media (max-height:400px){
@@ -18067,6 +18093,27 @@ function doUpgrade(a){
 var sheetEl=$('sheet'), sheetIn=$('sheetIn'), sheetTabs=$('sheetTabs'), sheetBody=$('sheetBody');
 var curSheet=null, curTab=0, forgeSel=null;
 
+/* ★ 2026-09-01 — 꾸미기 등 목록 시트용 "항상 보이는" 스크롤 막대.
+   브라우저 기본 스크롤바를 흉내내지 않고 직접 그린다(이유는 위 .sheet-bd 주석).
+   sheetBody 는 스크롤되는 칸 그 자체라 그 안에 자식으로 넣으면 막대까지 같이
+   스크롤돼 버린다 — 그래서 스크롤 안 되는 sheet-in 에 형제로 붙이고
+   position:absolute 로 위치만 맞춘다. */
+var sheetScrollThumb=el('div',null,null); sheetScrollThumb.id='sheetScrollThumb';
+sheetIn.appendChild(sheetScrollThumb);
+function updateSheetScrollThumb(){
+  if(!sheetOpen || sheetEl.classList.contains('sheetVillage')){ sheetScrollThumb.style.display='none'; return; }
+  var sh=sheetBody.scrollHeight, ch=sheetBody.clientHeight;
+  if(sh<=ch+1){ sheetScrollThumb.style.display='none'; return; }
+  var trackH=ch, thumbH=Math.max(28, trackH*(ch/sh));
+  var maxScroll=sh-ch, maxTravel=trackH-thumbH;
+  var top=sheetBody.offsetTop + (maxScroll>0? (sheetBody.scrollTop/maxScroll)*maxTravel : 0);
+  sheetScrollThumb.style.display='block';
+  sheetScrollThumb.style.height=thumbH+'px';
+  sheetScrollThumb.style.top=top+'px';
+}
+sheetBody.addEventListener('scroll', updateSheetScrollThumb, {passive:true});
+window.addEventListener('resize', updateSheetScrollThumb);
+
 function el(tag,cls,txt){ var e=document.createElement(tag); if(cls)e.className=cls;
   if(txt!=null){ if(typeof txt==='string' && txt.indexOf('<')>=0) e.innerHTML=txt; else e.textContent=txt; }
   return e; }
@@ -18663,7 +18710,12 @@ function renderDecorShop(){
   head.innerHTML='🍂 <b>도토리를 모아 쉼터를 꾸며요!</b><br>산 소품은 바로 오두막 쉼터에 놓여요 — '+
     '<b>쉼터 화면에서 손가락으로 끌어</b> 원하는 자리로 옮길 수 있어요(다른 소품과는 안 겹쳐요).';
   sheetBody.appendChild(head);
-  var grid=el('div','grid g3'); grid.style.marginTop='10px';
+  /* ★ 2026-09-01 — 사용자 실기기 리포트: "손가락으로 아주 좁은 틈 사이를 눌러야
+     한다" — 카드 사이 기본 간격(.grid{gap:8px}, 다른 화면 8곳과 공유)이 실제
+     손가락(성인 평균 폭 약 16~20mm)엔 좁다. 이 화면만 쓰는 클래스(decorgrid)를
+     따로 둬서 공유 .grid.g3 규칙(장비·펫·합성 등 다른 8개 화면)은 안 건드리고
+     여기만 간격을 넓힌다 — 스크롤 제스처를 잡을 여백도 같이 넓어진다. */
+  var grid=el('div','grid g3 decorgrid'); grid.style.marginTop='10px';
   for(var id in DECOR_ITEMS){
     (function(id){
       var it=DECOR_ITEMS[id], owned=!!D.owned[id];
@@ -18694,7 +18746,7 @@ function renderDecorShop(){
             decorAutoPlace(id, roomState().cur);
             SFX.coin&&SFX.coin(); saveGame(); syncHUD();
             toast(it.n+'(으)로 바꿨어요!');
-            renderSheet();
+            reRenderKeepScroll();
           });
         }
       } else {
@@ -18708,7 +18760,7 @@ function renderDecorShop(){
           if(it.fn) D.use[it.fn]=id;   /* 새로 산 가구는 바로 사용 중으로 바뀐다 */
           SFX.coin(); saveGame(); syncHUD();
           toast(it.n+'을(를) 샀어요! 쉼터에 놓였어요 🎉');
-          renderSheet();
+          reRenderKeepScroll();
         });
       }
       grid.appendChild(c);
@@ -18844,6 +18896,7 @@ function renderSheet(){
   /* 내용 높이가 줄었을 수 있으므로 범위 안으로 잘라 넣는다 */
   var maxTo=Math.max(0, sheetBody.scrollHeight - sheetBody.clientHeight);
   sheetBody.scrollTop = Math.min(keepTo, maxTo);
+  updateSheetScrollThumb();
   syncHUD();
 }
 
@@ -18992,7 +19045,7 @@ function renderBag(){
       c.appendChild(iconEl(abilSpr(a,t),44));
       c.appendChild(el('div','nm', owned? abilName(a)+(abilPlus(a)?' +'+abilPlus(a):'') : '???'));
       if(owned && (S.cards[a]|0)>0) { var q=el('span','qty','카드 '+S.cards[a]); c.appendChild(q); }
-      if(owned) c.addEventListener('click',function(){ S.abil=a; SFX.ok(); needSync=1; saveGame(); renderSheet(); });
+      if(owned) c.addEventListener('click',function(){ S.abil=a; SFX.ok(); needSync=1; saveGame(); reRenderKeepScroll(); });
       g.appendChild(c);
     });
     sheetBody.appendChild(g);
@@ -19641,7 +19694,7 @@ function renderPet(){
           c.appendChild(el('div','nm',PETS[id].n));
           var gb=el('span','qty'); gb.textContent=G.n; gb.style.background=G.col; gb.style.color='#2C2119';
           c.appendChild(gb);
-          c.addEventListener('click',function(){ S.petSlot.splice(sl,1); rebuildPets(); saveGame(); SFX.coin(); renderSheet(); });
+          c.addEventListener('click',function(){ S.petSlot.splice(sl,1); rebuildPets(); saveGame(); SFX.coin(); reRenderKeepScroll(); });
         } else {
           var pl=el('div',null,'＋'); pl.style.fontSize='30px'; c.appendChild(pl);
           c.appendChild(el('div','nm','비어 있음'));
@@ -20074,7 +20127,7 @@ function renderForge(){
     c.appendChild(iconEl(abilSpr(a,abilTier(a)),40));
     c.appendChild(el('div','nm',abilName(a)));
     if(abilPlus(a)) c.appendChild(el('span','qty','+'+abilPlus(a)));
-    c.addEventListener('click',function(){ forgeSel=a; SFX.coin(); renderSheet(); });
+    c.addEventListener('click',function(){ forgeSel=a; SFX.coin(); reRenderKeepScroll(); });
     g.appendChild(c);
   });
   pickWrap.appendChild(g);
