@@ -18297,9 +18297,23 @@ function roomUnlock(id){
   toast(def.ic+' '+def.n+' 방이 생겼어요! 이제 여기도 꾸밀 수 있어요 🎉');
   return true;
 }
-/* CSS만으로 그리는 방 배경(새 그림 없이 방 테마색만 다르게) — main 이외 방에 사용 */
+/* 방 배경 — art/room_<id>.webp 가 있으면 AI 그림을 쓰고(village_bg와 동일한
+   ART_SRC 문자열 + CSS cover 패턴), 없는 방(아직 미착수)은 기존처럼 CSS
+   테마색만으로 그린다. 2026-09-01: 주방(kitchen) 최초 적용, 나머지(서재/
+   정원/다락방)는 art/room_<id>.webp 만 추가하면 이 함수가 자동으로 집어씀. */
 function roomBgHtml(themeId){
   var t=VILLAGE_ROOMS[themeId];
+  var rArt=ART_SRC['room_'+themeId];
+  if(rArt){
+    /* ★ innerHTML로 들어가는 HTML 문자열이라 style="..." 자체가 큰따옴표
+       속성이다 — JSON.stringify(rArt)를 그대로 쓰면 데이터URL을 감싼
+       큰따옴표가 style 속성을 중간에 끊어버려 나머지가 다 깨진 HTML
+       속성으로 파싱된다(실제 스크린샷으로 발견). url() 안은 작은따옴표로
+       감싼다(bgArt처럼 .style.cssText에 직접 대입하는 경우는 HTML 파서를
+       안 거치므로 큰따옴표로도 안전했던 것 — 이 함수는 문자열 조립이라 다름). */
+    return '<div style="position:absolute;inset:0;background:'+t.floor+" url('"+rArt+"') center/cover no-repeat\"></div>"+
+      '<div style="position:absolute;left:0;right:0;top:0;height:70px;background:linear-gradient(180deg,rgba(0,0,0,.42),transparent);pointer-events:none"></div>';
+  }
   return '<div style="position:absolute;inset:0;background:linear-gradient(180deg,'+t.wall+' 0%,'+t.wall+' 62%,'+t.floor+' 62%,'+t.floor+' 100%)"></div>'+
     '<div style="position:absolute;left:0;right:0;top:0;height:62%;background:repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 2px,transparent 2px 34px)"></div>'+
     '<div style="position:absolute;left:0;right:0;bottom:0;height:38%;background:repeating-linear-gradient(90deg,rgba(0,0,0,.14) 0 30px,transparent 30px 33px);box-shadow:0 -3px 14px rgba(0,0,0,.35) inset"></div>'+
