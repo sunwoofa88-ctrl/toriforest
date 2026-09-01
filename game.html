@@ -17359,14 +17359,22 @@ function drawObjective(){
   rg.addColorStop(0,'rgba(255,232,150,.95)'); rg.addColorStop(1,'rgba(255,211,78,0)');
   ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(0,0,27*S1,0,6.2832); ctx.fill();
   RS();
-  /* ② 화살표 본체 */
+  /* ② 화살표 본체 — 2026-09-01: AI 생성 이미지(art/wayarrow.webp)로 교체.
+     사용자 요청("길 안내 표시 해주는것도 좀 Ai이미지 생성해서 시인성 좋고 고급지게")
+     반영. 그림이 아직 안 실린 프레임(로딩 초반 등)엔 기존 절차적 삼각형으로
+     안전 폴백한다(village_bg의 bgArt 패턴과 동일). */
   ctx.rotate(ang); ctx.scale(S1,S1);
-  ctx.beginPath();
-  ctx.moveTo(23,0); ctx.lineTo(-13,-17); ctx.lineTo(-5,0); ctx.lineTo(-13,17); ctx.closePath();
-  ctx.lineWidth=6.5; ctx.strokeStyle='#2C2119'; ctx.lineJoin='round'; ctx.stroke();
-  var gg=ctx.createLinearGradient(-13,-17,23,17);
-  gg.addColorStop(0,'#FFF0A8'); gg.addColorStop(1,'#F2A81C');
-  ctx.fillStyle=gg; ctx.fill();
+  var wa=artOf('wayarrow');
+  if(wa){
+    ctx.drawImage(wa, -29,-29,58,58);
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(23,0); ctx.lineTo(-13,-17); ctx.lineTo(-5,0); ctx.lineTo(-13,17); ctx.closePath();
+    ctx.lineWidth=6.5; ctx.strokeStyle='#2C2119'; ctx.lineJoin='round'; ctx.stroke();
+    var gg=ctx.createLinearGradient(-13,-17,23,17);
+    gg.addColorStop(0,'#FFF0A8'); gg.addColorStop(1,'#F2A81C');
+    ctx.fillStyle=gg; ctx.fill();
+  }
   RS();
 
   /* ③ 이름표 : 화살표가 화면 밖으로 안 나가게 안쪽으로 붙인다 */
