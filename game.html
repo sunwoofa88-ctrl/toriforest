@@ -233,6 +233,10 @@ button{
   animation:hintFade 1.6s ease-in-out infinite;
 }
 @keyframes hintFade{0%,100%{opacity:.84}50%{opacity:1}}
+/* ★ 2026-09-01 신규 — 침대 눕기 상태가 이제 자동으로 안 사라지고 아이가
+   "일어나기"를 탭할 때까지 유지되므로(무기한일 수 있음), 화면이 정지된
+   느낌이 안 들도록 💤가 아주 은은하게 숨쉬듯 움직인다. */
+@keyframes zzzBreathe{0%,100%{opacity:.88;transform:translateY(0) scale(1)}50%{opacity:1;transform:translateY(-6px) scale(1.06)}}
 .movehint.gone{display:none}
 .stage-tag{
   align-self:center;margin-top:2px;
@@ -18093,7 +18097,20 @@ function nowMs(){ try{ return performance.now(); }catch(e){ return 0; } }
 function repositionToasts(){
   try{
     if(!toastBox) return;
-    if(document.body.classList.contains('sheeting')){ toastBox.style.top=''; return; }
+    if(document.body.classList.contains('sheeting')){
+      toastBox.style.top='';
+      /* ★ 2026-09-01 재실측 — 쉼터(village) 화면은 다른 시트와 달리 하단
+         액션바가 매우 크다(퀵이동 7개 + 침대 버튼 + 던전/탑 버튼 2줄, 실측
+         약 275px@phone). 일반 시트용 bottom:14px(CSS) 그대로 두면 "일어나기"
+         토스트가 "던전 입구로" 글자 위에 그대로 겹쳤다(실측 스크린샷으로 확인).
+         쉼터일 때만 그 액션바의 실제 높이를 재서 그 위로 띄운다 — 고정
+         px를 추측해서 박지 않고(태블릿 등 다른 화면에서 틀어짐) 항상 실측값을 쓴다. */
+      var sheetEl2=document.getElementById('sheet');
+      var vBar = (sheetEl2 && sheetEl2.classList.contains('sheetVillage')) ?
+        document.querySelector('.sheet.sheetVillage [data-villagebar]') : null;
+      toastBox.style.bottom = vBar ? (Math.round(vBar.getBoundingClientRect().height+14)+'px') : '';
+      return;
+    }
     var hudEl=document.querySelector('.hud');
     if(hudEl&&frameEl){
       var fb=frameEl.getBoundingClientRect(), hb=hudEl.getBoundingClientRect();
@@ -18200,21 +18217,51 @@ function roomBgHtml(themeId){
 /* 침대 = 수면(체력 회복), 벽난로 = 잠깐 쉬기. 가구도 소품 시스템에 편입됐으므로
    (요청 "가구들도 소품으로 추가") 여기서 실제 동작을 함수로 뺀다 — 소품 탭 /
    전용 "눕기" 버튼 둘 다 이 함수를 그대로 쓴다. */
+/* ★ 2026-09-01 재설계 — 사용자 제보: "아이가 캐릭터를 침대에 눕고싶음 눕고
+   일어나고 싶으면 일어나게 해라." 예전엔 버튼 한 번 누르면 0.9초짜리
+   자동 연출(화면 암전→회복→토스트) 후 강제로 깨어났다 — 아이에게 선택권이
+   없었다. 이제 "눕기/일어나기" 토글로 바꾼다: 누우면 아이가 다시 탭할
+   때까지 그대로 누워 쉬고, 일어나고 싶을 때 같은 자리를 탭하면 일어난다.
+   침대 버튼(하단 액션바) · 메인방 침대 그림(보이지 않는 탭 영역) · 다른
+   방으로 옮긴 침대 이모지 아이콘, 이렇게 콜사이트가 3곳인데(각기 다른
+   함수 스코프라 지역변수로는 상태 공유가 안 됨) 셋 다 같은 wrap DOM
+   엘리먼트를 인자로 받으므로, wrap 자신에 __resting 플래그를 매달아
+   "지금 눕어있는지"의 유일한 기준으로 삼는다(엘리먼트는 객체라 어느
+   함수에서 참조하든 같은 값을 본다 — 클로저 문제 없이 공유됨). */
 function villageSleep(wrap){
-  var mh=maxHp();
-  if(HP>=mh){ toast('이미 체력이 가득해요 🌙'); return; }
-  var ov=el('div');
+  if(wrap.__resting) villageWakeUp(wrap); else villageLieDown(wrap);
+}
+function villageLieDown(wrap){
+  wrap.__resting=true;
+  var mh=maxHp(), healed=(HP<mh);
+  if(healed){ HP=mh; needSync=1; syncHUD(); }
+  var ov=el('div'); ov.setAttribute('data-sleepov','1');
   ov.style.cssText='position:absolute;inset:0;background:rgba(10,8,20,.55);display:flex;'+
-    'align-items:center;justify-content:center;font-size:54px;z-index:50;opacity:0;transition:opacity .3s;pointer-events:none';
+    'align-items:center;justify-content:center;font-size:54px;z-index:50;opacity:0;'+
+    'transition:opacity .3s;pointer-events:none';
   ov.textContent='💤';
   wrap.appendChild(ov);
-  requestAnimationFrame(function(){ ov.style.opacity='1'; });
+  requestAnimationFrame(function(){
+    ov.style.opacity='1';
+    ov.style.animation='zzzBreathe 2.6s ease-in-out .35s infinite';
+  });
   SFX.coin&&SFX.coin();
-  setTimeout(function(){
-    HP=mh; needSync=1; syncHUD();
-    ov.style.opacity='0';
-    setTimeout(function(){ ov.remove(); toast('폭신한 이불 속에서 포근하게 쉬었어요! 체력이 가득 찼어요 💤'); },320);
-  },900);
+  var btn=wrap.querySelector('[data-sleepbtn]');
+  if(btn){ btn.textContent='🌞  일어나기';
+    btn.style.background='linear-gradient(180deg,#FFD27A,#E8983A)'; btn.style.borderColor='#B96E1C'; }
+  toast(healed? '폭신한 이불 속에서 체력을 회복하며 쉬고 있어요 💤 (다시 탭하면 일어나요)'
+              : '침대에 폭 누워서 편안히 쉬고 있어요 💤 (다시 탭하면 일어나요)', null, null, 2600);
+}
+function villageWakeUp(wrap){
+  wrap.__resting=false;
+  var ov=wrap.querySelector('[data-sleepov]');
+  if(ov){ ov.style.animation='none'; ov.style.opacity='0';
+    setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); },320); }
+  SFX.coin&&SFX.coin();
+  var btn=wrap.querySelector('[data-sleepbtn]');
+  if(btn){ btn.textContent='🛏️  침대에 눕기';
+    btn.style.background='linear-gradient(180deg,#8FA7FF,#4C63C9)'; btn.style.borderColor='#2E3F8F'; }
+  toast('기지개를 쭉~ 개운하게 일어났어요! 🌞', null, null, 1800);
 }
 function villageWarm(){
   SFX.coin&&SFX.coin(); toast('벽난로가 타닥타닥, 마음까지 따뜻해져요 🔥');
@@ -20369,6 +20416,7 @@ function renderVillage(){
 
   /* 하단 : 반투명 액션바 (참고 이미지의 하단 네비게이션처럼) */
   var bar=el('div');
+  bar.setAttribute('data-villagebar','1'); /* repositionToasts()가 실측해서 토스트를 이 위로 띄우는 데 씀 */
   bar.style.cssText='position:absolute;left:0;right:0;bottom:0;padding:14px 14px calc(14px + var(--safe-b,0px));'+
     'background:linear-gradient(180deg,transparent,rgba(20,13,8,.86) 45%);display:flex;flex-direction:column;gap:10px';
   wrap.appendChild(bar);
@@ -20415,8 +20463,10 @@ function renderVillage(){
     var bedPos=Dfb.pos[Dfb.use.bed];
     if(bedPos && bedPos.room===R.cur){
       var sleepBtn=el('button','bigbtn','🛏️  침대에 눕기');
+      sleepBtn.setAttribute('data-sleepbtn','1');
       sleepBtn.style.cssText='min-height:44px;font-size:14px;background:linear-gradient(180deg,#8FA7FF,#4C63C9);'+
-        'color:#fff;border-color:#2E3F8F;width:auto;align-self:center;padding-left:22px;padding-right:22px';
+        'color:#fff;border-color:#2E3F8F;width:auto;align-self:center;padding-left:22px;padding-right:22px;'+
+        'transition:background .25s,border-color .25s';
       sleepBtn.addEventListener('click',function(e){ e.stopPropagation(); villageSleep(wrap); });
       bar.appendChild(sleepBtn);
     }
@@ -20464,6 +20514,7 @@ function renderVillage(){
      stopPropagation 하거나, data-decorbox/button 검사로 걸러진다). */
   if(doll){
     wrap.addEventListener('click', function(e){
+      if(wrap.__resting) return;   /* 침대에 누워있는 동안은 배경을 탭해도 걸어가지 않는다 */
       if(hdr.contains(e.target) || bar.contains(e.target) || tabs.contains(e.target)) return;
       if(e.target.closest && e.target.closest('[data-decorbox],button')) return;
       var rect=wrap.getBoundingClientRect();
@@ -20471,6 +20522,10 @@ function renderVillage(){
       villageWalkTo(fx, wrap, doll);
     });
   }
+  /* 이 화면(쉼터)의 실제 하단 액션바 높이가 방마다(침대 버튼 유무 등) 조금씩
+     다를 수 있으므로, 매번 새로 그릴 때마다(최초 진입/방 이동 전부) 토스트
+     위치를 다시 실측해 맞춘다. */
+  try{ repositionToasts(); }catch(e){}
 }
 
 function renderTower(){
