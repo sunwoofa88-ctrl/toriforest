@@ -2556,6 +2556,22 @@ var WEP_SKILL={
    던전앤파이터의 스킬 구성 원칙 : 짧은 쿨 '연계기' → 중간 쿨 '범위기' → 긴 쿨 '한 방'.
    WEP_SKILL 의 6개가 그 순서(쿨타임 오름차순)로 배치돼 있다. */
 var SKILL_N=6;
+/* ★ 2026-09-01 — 스킬칸 자유 등록제. 예전엔 무기를 바꾸면 스킬 6개가 통째로
+   바뀌었다(curSkills()가 WEP_SKILL[현재무기]에서 자동으로 뽑음). 사용자 요청
+   ("스킬 슬롯 빈칸 만들어서 아이가 원하는 것을 추가·등록") — 무기와 무관하게
+   고정된 스킬 12개짜리 목록(SKILL_POOL)을 만들고, 그 12개 중 아이가 원하는
+   걸 골라 6칸에 자유롭게 넣는 방식으로 바꾼다. 새 스킬을 새로 설계하지 않고
+   이미 balance·FX가 검증된 WEP_SKILL 유래 ABIL 항목(sk_<무기계열>_<번호>)
+   중 계열(kind)이 최대한 겹치지 않게 12개를 골랐다 — 던파모바일처럼 짧은 쿨
+   (melee/proj) · 중간 쿨(spin/nova/lob) · 긴 쿨(orbit/laser/summon/trap/chain/
+   beam) 이 골고루 섞이도록 배치(위 주석의 던파식 원칙 그대로 재사용). */
+var SKILL_POOL=[
+  'sk_sword_0','sk_sword_1','sk_sword_5',
+  'sk_bow_0','sk_bow_2','sk_bow_3',
+  'sk_staff_0','sk_staff_1','sk_staff_3',
+  'sk_dagger_2','sk_dagger_4',
+  'sk_bow_5'
+];
 function buildSkills(){
   for(var w=0;w<WEP_TYPE.length;w++){
     var WT=WEP_TYPE[w], defs=WEP_SKILL[WT.id];
@@ -2585,16 +2601,27 @@ function skUp(id){
   S.skLv[id]=l+1; needSync=1; saveGame();
   return {r:'ok', lv:l+1};
 }
-/* 지금 무기의 스킬 4개 */
+/* 스킬 6칸 — 아이가 직접 등록한 것(S.skReg). 무기를 바꿔도 안 바뀐다(2026-09-01 변경,
+   위 SKILL_POOL 주석 참고). 처음 켜면 12개 중 앞 4개로 시작하고 2칸은 비워 둬서
+   '빈칸에 뭘 넣지?' 를 바로 경험하게 한다. */
 function curSkills(){
-  var wt='sword';
-  var w=eqAt? eqAt('w') : S.eqW;
-  if(w && EQUIP[w]) wt=WEP_TYPE[EQUIP[w].tn].id;
-  if(!WEP_SKILL[wt]) wt='sword';
-  var out=[];
-  for(var i=0;i<SKILL_N;i++) out.push('sk_'+wt+'_'+i);
-  return out;
+  if(!S.skReg || !S.skReg.length){
+    S.skReg=[SKILL_POOL[0],SKILL_POOL[1],SKILL_POOL[2],SKILL_POOL[3],null,null];
+  }
+  return S.skReg;
 }
+/* 스킬칸 등록/해제. id=null 이면 그 칸을 비운다. 다른 칸에 이미 있던 스킬을
+   고르면(picker 쪽에서) 그 칸은 호출 전에 먼저 비워서 같은 스킬이 두 칸에
+   동시에 들어가지 않게 한다. */
+function skRegister(slot,id){
+  var ids=curSkills();
+  if(slot<0||slot>=SKILL_N) return {r:'bad'};
+  if(id && SKILL_POOL.indexOf(id)<0) return {r:'bad'};
+  ids[slot]=id||null;
+  needSync=1; saveGame();
+  return {r:'ok'};
+}
+function openSkillPicker(slot){ openSheet('skillpick', slot); }
 function buildAbils(){
   var kindCycle=['melee','beam','proj','spin','lob','nova','chain','orbit','laser','trap','summon'];
   for(var e=0;e<ELEM.length;e++){
@@ -9325,7 +9352,7 @@ function defaultState(){
     chap:0, prog:{}, mat:{}, cards:{}, tier:{}, plus:{}, petSlot:[], gacha:null, gachaBonus:0,
     eq:{}, eqPlus:{}, eqW:null, eqA:null,
     abil:'acorn_blade', owned:{acorn_blade:1}, codex:{}, pets:{}, luck:{}, ult:0, sfx:1, tut:0, tut2:0, homeTip:0,
-    tw:{best:0,deep:0,clr:0,run:0}, twShard:0,
+    tw:{best:0,deep:0,clr:0,run:0}, twShard:0, skReg:null,
     st:{kill:0,boss:0,chest:0,enh:0,reroll:0,comboMax:0,days:0,streak:0,lastDay:'',dmgMax:0},
     ach:{}, achT:null };
 }
@@ -16343,7 +16370,7 @@ function render(){
         ctx.drawImage(o.spr, px-ls/2, py-o.z-ls, ls, ls);
       }
     }
-    else { GA(1); drawHero(px,py); }   /* ★ 주인공도 자기 투명도를 선언한다 */
+    else { GA(1); drawHero(px,py); drawPlayerHpBar(px,py); }   /* ★ 주인공도 자기 투명도를 선언한다 */
   }
 
   /* --- 발사체 · 이펙트 --- */
@@ -16940,6 +16967,23 @@ function updateHeroAnim(dt){
   }
   /* ★ 스트레치는 ANIM.sx 에 되쓰면 프레임마다 누적된다(실측 진폭 73.8% 로 폭주).
      저장하지 않고 그릴 때만 곱한다. */
+}
+/* ★ 2026-09-01 — 플레이어 체력바를 몬스터처럼 인월드 플로팅으로(사용자 요청).
+   모양은 drawEnemy()의 몬스터 체력바(bw=sz*0.60, by=hy-sz*0.99 등)와 동일한
+   틀을 그대로 재사용 — 게임 안에서 이미 검증된 모양이라 새로 디자인하지 않았다.
+   상단 고정 HUD(uiHpBar)는 그대로 둔다(이미 있던 걸 없애 달란 요청은 아니었고,
+   자식이 화면 아무 데나 보고도 확인할 수 있는 이중 안전장치로 남겨 둔다).
+   몬스터와 똑같이 '가득 찼을 땐 안 보이고 다쳤을 때만' 뜨게 했다. */
+function drawPlayerHpBar(px,py){
+  if(P.dead) return;
+  var mh=maxHp(); if(mh<=0) return;
+  var hr=Math.max(0,HP/mh);
+  if(hr>=1) return;
+  var sz=P.size, bw=sz*0.62, bx=px-bw/2, by=py-sz*1.06;
+  ctx.fillStyle='rgba(44,33,25,.78)'; ctx.fillRect(bx-2,by-2,bw+4,9);
+  ctx.fillStyle='#E7D7BC';            ctx.fillRect(bx,by,bw,5);
+  ctx.fillStyle= hr<0.34? '#FF6B4A' : '#4CC93E';
+  ctx.fillRect(bx,by,bw*hr,5);
 }
 function drawHero(px,py){
   var st='idle';
@@ -18198,6 +18242,7 @@ var SHEETS={
   make: {title:'만들기',    tabs:['재료 합치기','능력 진화','능력 세게']},
   book: {title:'도감',      tabs:['몬스터','재료','능력','수첩']},
   map:  {title:'모험 지도', tabs:['숲 지도','별빛의 탑']},
+  skillpick: {title:'스킬 고르기', tabs:null},
   village: {title:'오두막 쉼터', tabs:null},
   decor: {title:'🛋️ 쉼터 꾸미기', tabs:null}
 };
@@ -18745,13 +18790,70 @@ function renderSheet(){
   var gb=$('btnReset');
   if(gb) gb.classList.toggle('hidden', !(curSheet==='map' && curTab===0));
   sheetBody.innerHTML='';
-  ({bag:renderBag,gear:renderGear,pet:renderPet,make:renderMake,book:renderBook,map:renderMap,village:renderVillage,decor:renderDecorShop})[curSheet]();
+  ({bag:renderBag,gear:renderGear,pet:renderPet,make:renderMake,book:renderBook,map:renderMap,village:renderVillage,decor:renderDecorShop,skillpick:renderSkillPick})[curSheet]();
   /* 내용 높이가 줄었을 수 있으므로 범위 안으로 잘라 넣는다 */
   var maxTo=Math.max(0, sheetBody.scrollHeight - sheetBody.clientHeight);
   sheetBody.scrollTop = Math.min(keepTo, maxTo);
   syncHUD();
 }
 
+/* ---------- 스킬 고르기 (빈 칸 눌러서 진입) ----------
+   ★ 2026-09-01 신규. renderBag() 스킬 카드(아이콘·이름·계열배지·능력치)와
+   같은 모양을 재사용해 SKILL_POOL 12개를 전부 보여주고, 고르면 그 스킬을
+   눌러서 들어온 칸(curTab=slot)에 등록한다. */
+function renderSkillPick(){
+  var slot=curTab;
+  sheetBody.appendChild(el('div','sec-t',(slot+1)+'번 칸에 넣을 스킬을 골라요'));
+  var ids=curSkills();
+  var curId=ids[slot];
+  SKILL_POOL.forEach(function(id){
+    var A=ABIL[id]; if(!A) return;
+    var wcol=skillColor(A);
+    var bx=el('div','forge'); bx.style.marginTop='var(--sp-2)';
+    var row=el('div','fgrow');
+    var sl=el('div','slot skslot');
+    sl.style.cssText='width:96px;height:96px;border-color:'+wcol+
+      ';box-shadow:0 5px 0 rgba(44,33,25,.18), inset 0 0 0 3px rgba(255,255,255,.7), 0 0 16px '+rgba(wcol,.45)+
+      ';background:radial-gradient(120% 120% at 50% 18%,'+lite(wcol,.86)+','+lite(wcol,.62)+')';
+    sl.appendChild(iconEl(skillIcon(A.kind,wcol),76));
+    row.appendChild(sl);
+    var mid=el('div','fginfo');
+    var t1=el('div',null,A.n);
+    t1.style.cssText='font-family:var(--f-disp);font-size:var(--t-xl);color:'+dark(wcol,.30)+';line-height:1.18;word-break:keep-all';
+    mid.appendChild(t1);
+    var kd=el('span',null,SK_KIND_N[A.kind]||'');
+    kd.style.cssText='display:inline-block;margin:4px 0 6px;padding:2px 10px;border-radius:99px;font-size:var(--t-xs);'+
+      'background:'+rgba(wcol,.20)+';color:'+dark(wcol,.34)+';border:2px solid '+rgba(wcol,.45);
+    mid.appendChild(kd);
+    row.appendChild(mid);
+    bx.appendChild(row);
+    var already=(curId===id);
+    var usedSlot=-1;
+    for(var k=0;k<ids.length;k++){ if(ids[k]===id && k!==slot){ usedSlot=k; break; } }
+    var ub=el('button','bigbtn', already? '✔ 지금 이 칸의 스킬' : (usedSlot>=0? (usedSlot+1)+'번 칸에서 옮겨오기' : '이 칸에 넣기'));
+    if(already) ub.disabled=true;
+    else ub.style.background='linear-gradient(180deg,#BFE9FF,#4FA8DA)';
+    ub.addEventListener('click',function(){
+      if(usedSlot>=0) skRegister(usedSlot,null);
+      skRegister(slot,id);
+      SFX.ok&&SFX.ok();
+      toast('<b>'+A.n+'</b> 장착!','rare',null,1800);
+      syncSkillBar(true);
+      closeSheet();
+    });
+    bx.appendChild(ub);
+    sheetBody.appendChild(bx);
+  });
+  if(curId){
+    var rb=el('button','bigbtn','이 칸 비우기');
+    rb.style.cssText='background:linear-gradient(180deg,#EEE6D8,#CBBBA2);margin-top:var(--sp-2)';
+    rb.addEventListener('click',function(){
+      skRegister(slot,null); syncSkillBar(true); closeSheet();
+    });
+    sheetBody.appendChild(rb);
+  }
+  sheetBody.appendChild(el('div','info','원하는 스킬을 골라 스킬칸에 넣어보세요! 이미 다른 칸에 있는 스킬을 고르면 거기서 옮겨와요.'));
+}
 /* ---------- 가방 ---------- */
 function renderBag(){
   /* ══ 스킬 키우기 ══ 무기를 바꾸면 스킬 4개가 통째로 바뀐다. 도토리로 레벨을 올린다. */
@@ -18828,7 +18930,7 @@ function renderBag(){
       bx.appendChild(ub);
       sheetBody.appendChild(bx);
     });
-    sheetBody.appendChild(el('div','info','스킬은 <b>무기 종류마다 달라져요.</b> 검을 들면 베기, 지팡이를 들면 마법 스킬이 나와요!<br><b>자동</b>이면 알아서 쓰고, <b>수동</b>이면 아래 버튼을 눌러서 써요.'));
+    sheetBody.appendChild(el('div','info','아래 스킬칸의 <b>빈 칸(+)</b>을 누르면 원하는 스킬을 골라 넣을 수 있어요!<br><b>자동</b>이면 알아서 쓰고, <b>수동</b>이면 아래 버튼을 눌러서 써요.'));
     return;
   }
   if(curTab===1){
@@ -21872,6 +21974,8 @@ var skEls=[], skLastKey='';
       function fire(e){
         if(e&&e.cancelable) e.preventDefault();
         if(!playing||P.dead) return;
+        var ids0=curSkills();
+        if(!ids0[idx]){ openSkillPicker(idx); return; }   /* 빈 칸 — 자동/수동 상관없이 항상 스킬 고르기 화면 */
         if(skAuto()){ toast('지금은 <b>자동</b>이에요. 직접 쓰려면 <b>수동</b>으로 바꿔요','',null,2000); return; }
         var ids=curSkills(), A=ABIL[ids[idx]]; if(!A) return;
         if(SK_CD[idx]>0) return;
@@ -21914,8 +22018,25 @@ function syncSkillBar(force){
     skLastKey=key;
     for(var i=0;i<skEls.length;i++){
       var A=ABIL[ids[i]];
-      skEls[i].n.textContent = A? A.n : '-';
+      skEls[i].n.textContent = A? A.n : '추가';
       skEls[i].lv.textContent = A? skLv(ids[i]) : '';
+      /* 빈 칸(A 없음) — 2026-09-01: 던파식 자유 등록제. 점선 원 + '+' 로
+         "눌러서 스킬을 골라요"를 그림만 보고도 알 수 있게 한다. */
+      if(!A && skEls[i].ic){
+        skEls[i].b.style.background='linear-gradient(180deg,#F3ECDD,#E3D6BC) padding-box,'+METAL+' border-box';
+        skEls[i].b.style.backgroundClip='padding-box, border-box';
+        skEls[i].b.style.backgroundOrigin='padding-box, border-box';
+        skEls[i].b.classList.remove('tile','t0','t1','t2');
+        var g0=skEls[i].ic.getContext('2d');
+        g0.clearRect(0,0,128,128);
+        g0.save();
+        g0.strokeStyle='rgba(120,98,70,.55)'; g0.lineWidth=6; g0.setLineDash([10,9]);
+        g0.beginPath(); g0.arc(64,64,46,0,6.2832); g0.stroke();
+        g0.restore();
+        g0.fillStyle='rgba(120,98,70,.62)';
+        g0.font='700 68px sans-serif'; g0.textAlign='center'; g0.textBaseline='middle';
+        g0.fillText('+',64,68);
+      }
       if(A && skEls[i].ic){
         var wcol=skillColor(A);
         /* 안쪽 : 가운데가 밝고 가장자리가 어두운 '보석 원판'.
@@ -22268,6 +22389,7 @@ window.__TORI = { onBack:function(){ try{ return onBackKey(); }catch(e){ return 
         skillColor:skillColor, SK_SIG:SK_SIG, get P(){return P;},
         skillCastFX:skillCastFX, weaponSwingFX:weaponSwingFX,
         curSkills:curSkills, SK_CD:function(){return SK_CD.slice();}, skLv:skLv, skUp:skUp, WEP_SKILL:WEP_SKILL,
+        skRegister:skRegister, get SKILL_POOL(){return SKILL_POOL;}, openSkillPicker:openSkillPicker,
         eqOn:eqOn, eqAt:eqAt, eqSet:eqSet,  eqBonus:eqBonus, eqScore:eqScore, get EQ_BY_SLOT(){return EQ_BY_SLOT;},
         fuseAllPets:fuseAllPets, petFuseCount:petFuseCount,
         ensureMob:ensureMob, mobIcon:(typeof mobIcon==='function'?mobIcon:null), drawWeapon:drawWeapon, drawArmorIcon:drawArmorIcon, metalFinish:metalFinish,
