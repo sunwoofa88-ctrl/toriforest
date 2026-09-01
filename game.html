@@ -13989,19 +13989,23 @@ function heroElemCol(){
    사각형은 '손가락이 봉을 가린 세로 구간'과 '주먹 높이'로 그림에서 직접 쟀다.
    가로를 그보다 넓히면 꼬리까지 다시 그려져 무기를 가린다(실제로 가렸다). */
 function drawHandOver(g2, x, y, sz, ang, hx0, hy0, sw, sh, wsc, swinging){
-  /* ★ 2026-08-31 — 사용자 제보("무기 각도가 저런데 그립한 손 방향이 저게 맞냐??")로
-     확인: 갑옷을 입으면(HERO_GRIP 분기, 아래) 몸통 그림에 이미 그려진 '고정된 주먹'을
-     그대로 오려 붙인다 — 정지 이미지 클리핑이라 회전 코드 자체가 없다. 즉 갑옷을 입은
-     상태(=장비를 갖춘 사실상 모든 실제 플레이)에서는 무기가 스윙하며 각도가 계속
-     바뀌어도 손은 항상 idle 각도로 고정돼 있었다 — 무기와 손이 서로 다른 각도로
-     따로 노는 것처럼 보인 원인. 기존 6종 조합 그림을 전부 다시 그리는 건 비현실적이라,
-     스윙 중(swinging=true, kk9 0~1 구간)에는 이 정지 클리핑을 건너뛰고 맨 아래의
-     회전하는 손 그림(hand_bare 등, 이미 방향·모양 실측 교정 완료) 경로로 강제
-     진입시킨다 — 평소엔 예쁜 그려진 손, 스윙 중에만 무기와 함께 실제로 도는 손. */
+  /* ★ 2026-09-01 — 사용자 요구("무기 잡는 별도의 손 이미지 완전히 삭제하고 다른
+     방법으로 하라 했다", "그립 주먹 큰 이미지가 왜 있어야하는데? 없애라")로
+     회전하는 손 오버레이(hand_bare/leather/steel/magic, 아래쪽 경로) 자체를
+     완전히 끈다 — swinging 여부와 무관하게 항상 '몸그림에서 주먹만 오려 쓰는'
+     경로(자세 그림 또는 HERO_GRIP 클립)만 탄다. 예전(2026-08-31)엔 스윙 중엔
+     이 정지 클리핑이 무기 회전을 못 따라가 어색해 보인다고 판단해 스윙 중만
+     회전 오버레이로 강제 전환했었는데, 그 전에도 이미 손 그림의 회전을 무기
+     회전량의 40%로 감쇠해 쓰고 있었다(HAND_SWING_DAMP, 100% 추종은 손이 뒤틀려
+     보였다는 실측 기록) — 즉 '정지(0%)가 완전 회전(100%)보다 낫다'는 판단은
+     이미 한 번 검증된 방향이었다. 스윙 중에도 정지 클립으로 통일한 결과를
+     실제로 렌더링해 확인함(/tmp/swing_full_static_*.png) — 무기만 실제로
+     돌고 손은 몸그림 그대로라 어색함보다 '무기 하나만 손에서 미끄러지듯
+     도는' 인상이 있어 보이나, 별도 이미지 자산을 완전히 없앤 대가로 감수. */
   /* 자세 그림 프레임 — 그 자세 그림 자체의 주먹 사각형(hp.fx0~fy1)으로 다시 그린다.
      몸(spr)이 이미 heroPoseSpr(...)의 해당 상태 그림이므로 여기서도 같은 그림(psSpr)을
      써야 손과 몸이 어긋나지 않는다. */
-  if(!swinging && HERO_POSE_PK && HERO_POSE[HERO_ART_KEY]){
+  if(HERO_POSE_PK && HERO_POSE[HERO_ART_KEY]){
     var hp=HERO_POSE[HERO_ART_KEY];
     var _ps=heroPoseSpr(HERO_POSE_PK);
     var psSpr=_ps[HERO_POSE_ST]||_ps.idle;
@@ -14018,7 +14022,7 @@ function drawHandOver(g2, x, y, sz, ang, hx0, hy0, sw, sh, wsc, swinging){
   var cls=heroArmorCls();
   var G=cls? HERO_GRIP['heroW_'+cls] : HERO_GRIP.bare;
   var sp=(SPR.hero&&SPR.hero.idle)? SPR.hero.idle : null;
-  if(!swinging && G && G.fx0!==undefined && sp && hx0!==undefined){
+  if(G && G.fx0!==undefined && sp && hx0!==undefined){
     /* 몸을 그린 것과 완전히 같은 자리·크기로, 주먹 사각형만 다시 그린다 */
     g2.save();
     g2.beginPath();
