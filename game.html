@@ -18221,12 +18221,27 @@ function repositionToasts(){
   }catch(e){}
 }
 var sheetOpenedAt=-1e9;
+/* ★ 2026-09-01 — 사용자 실기기 리포트 다수: "쉼터에서 꾸미기/별빛의 탑 등을
+   열었다가 닫기를 누르면 던전으로 자동이동한다", "쉼터가 항상 기본이어야
+   하는데". 근본 원인(레이어식 단일 시트 구조의 공통 결함): 쉼터(village)도
+   가방·장비·꾸미기·지도 등도 전부 같은 sheetEl 하나를 재사용하는 '평면'
+   구조라, closeSheet()는 지금 무슨 시트가 열려 있었는지 상관없이 항상
+   "실제 게임 화면(캔버스, 즉 현재 몬 상태 그대로의 던전/탑)으로 나간다"만
+   할 줄 알았다. 쉼터 안에서 하위 시트(꾸미기·가방·장비·펫·만들기·도감·
+   지도)를 열었을 때도 똑같이 적용돼, 그 하위 시트를 닫으면 쉼터를 거치지
+   않고 곧장 던전 화면으로 떨어져 "던전으로 순간이동한 것처럼" 보였다.
+   고침: 쉼터 안에서 연 하위 시트인지(sheetVillageReturn)를 기억해뒀다가,
+   그 시트를 닫을 때는 던전으로 나가는 대신 쉼터로 돌아간다. 쉼터 자체를
+   닫을 때(예: '🌲 던전 입구로' 버튼)는 이 값이 항상 false라 기존 그대로
+   던전으로 정상 진입한다 — 실제 던전 진입 버튼 동작은 변경 없음. */
+var sheetVillageReturn=false;
 function openSheet(kind,tab){
   /* 메뉴를 열 때 손에 남아 있던 입력을 전부 놓는다.
      안 놓으면 조이스틱이 눌린 채로 남고, 공격 반복 타이머가 메뉴 뒤에서 계속 돈다. */
   try{ releaseAllInput(); }catch(e){}
   try{ ATK_STOP(); }catch(e){}
   var wasVillage=(curSheet==='village');   /* 쉼터 안에서 하위 시트로 넘어가는 전환인지 */
+  sheetVillageReturn = wasVillage && kind!=='village';
   curSheet=kind; curTab=tab||0;
   sheetOpenedAt=nowMs();
   sheetEl.classList.toggle('sheetVillage', kind==='village');
@@ -18238,6 +18253,7 @@ function openSheet(kind,tab){
 }
 function closeSheet(){
   if(!sheetOpen) return;
+  if(sheetVillageReturn){ sheetVillageReturn=false; openSheet('village',0); return; }
   sheetIn.classList.add('out');
   setTimeout(function(){
     sheetIn.classList.remove('out'); sheetEl.classList.remove('on');
