@@ -237,6 +237,19 @@ button{
    "일어나기"를 탭할 때까지 유지되므로(무기한일 수 있음), 화면이 정지된
    느낌이 안 들도록 💤가 아주 은은하게 숨쉬듯 움직인다. */
 @keyframes zzzBreathe{0%,100%{opacity:.88;transform:translateY(0) scale(1)}50%{opacity:1;transform:translateY(-6px) scale(1.06)}}
+/* ★ 2026-09-01 신규 — 사용자 요청: "벽난로에 불이 타오르는 애니메이션". 진짜
+   불꽃처럼 규칙적이지 않게 보이려고, 서로 다른 주기의 두 애니메이션(흔들림+
+   밝기)을 곁들인다. 쉼터의 정적인 🔥 이모지(CSS 대체 배경)와, AI 배경 그림
+   위에 겹치는 은은한 불빛 오버레이(fireGlow) 양쪽에서 재사용한다. */
+@keyframes fireFlicker{
+  0%{transform:scale(1) rotate(0deg);filter:brightness(1) drop-shadow(0 0 16px #FF8A2A)}
+  20%{transform:scale(1.05) rotate(-2deg);filter:brightness(1.12) drop-shadow(0 0 20px #FFA23A)}
+  40%{transform:scale(.97) rotate(1.5deg);filter:brightness(.95) drop-shadow(0 0 13px #FF7A1A)}
+  60%{transform:scale(1.06) rotate(-1deg);filter:brightness(1.15) drop-shadow(0 0 22px #FFB04A)}
+  80%{transform:scale(.98) rotate(2deg);filter:brightness(1.02) drop-shadow(0 0 15px #FF8A2A)}
+  100%{transform:scale(1) rotate(0deg);filter:brightness(1) drop-shadow(0 0 16px #FF8A2A)}
+}
+@keyframes fireGlowPulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.9;transform:scale(1.18)}}
 .movehint.gone{display:none}
 .stage-tag{
   align-self:center;margin-top:2px;
@@ -18016,7 +18029,10 @@ function iconEl(src,px){
    · 무기는 게임 안 drawHero 의 대기 자세와 같은 위치·각도로 쥔다
    · 반지는 너무 작아 그리지 않고 슬롯 카드로만 보여 준다
    ══════════════════════════════════════════════════════════════════ */
-function heroDollCanvas(){
+function heroDollCanvas(noWeapon){
+  /* noWeapon=true : 무기를 그리지 않은 인형(쉼터 침대 눕기용, 2026-09-01 추가 —
+     "누워서 쉴 때는 무기가 없어야지" 제보). 기존 호출부(착용화면 등)는 인자를
+     안 넘기므로 노멀한 undefined→false 로 지금까지와 완전히 동일하게 동작한다. */
   /* 착용 화면 인형 = 인게임 주인공 스프라이트 그대로 + 손에 쥔 무기.
      ★ 무기가 캔버스 밖으로 나가 잘리던 문제가 있었다(대검·활처럼 긴 무기).
        그래서 넉넉한 캔버스에 먼저 그린 뒤, 실제로 그려진 영역을 재서
@@ -18039,20 +18055,22 @@ function heroDollCanvas(){
   /* 몸 → 무기 → 손 순서 */
   var hi=(SPR.hero&&SPR.hero.idle)? SPR.hero.idle : null;
   if(hi) g.drawImage(hi, ox-sz*0.5, oy-sz*BASE_F, sz, sz);
-  var wid=eqAt('w');
-  var wsp=wid? eqSprWorld(wid) : (typeof abilSpr==='function'? abilSpr(S.abil, abilTier(S.abil)) : null);
-  if(wsp){
-    var WS=sz*0.62;
-    var _wg = wid? wepGrip(wid) : abilGripFallback();
-    var _HH2=heroHand();
-    var hx2=ox+sz*_HH2[0], hy2=oy+sz*_HH2[1];
-    g.save(); g.translate(hx2, hy2); g.rotate(_wg.rot);
-    var _ws=WS*(_wg.s||1);
-    g.drawImage(wsp, -_ws*_wg.x, -_ws*_wg.y, _ws, _ws);
-    g.restore();
-    /* ★ 앞손 : 인게임과 똑같이 '봉을 쥔 손' AI 그림을 무기 위에 얹는다. */
-    drawHandOver(g, hx2, hy2, sz, (_wg.nat!==undefined? _wg.nat : 0) + _wg.rot,
-                 ox-sz*0.5, oy-sz*BASE_F);
+  if(!noWeapon){
+    var wid=eqAt('w');
+    var wsp=wid? eqSprWorld(wid) : (typeof abilSpr==='function'? abilSpr(S.abil, abilTier(S.abil)) : null);
+    if(wsp){
+      var WS=sz*0.62;
+      var _wg = wid? wepGrip(wid) : abilGripFallback();
+      var _HH2=heroHand();
+      var hx2=ox+sz*_HH2[0], hy2=oy+sz*_HH2[1];
+      g.save(); g.translate(hx2, hy2); g.rotate(_wg.rot);
+      var _ws=WS*(_wg.s||1);
+      g.drawImage(wsp, -_ws*_wg.x, -_ws*_wg.y, _ws, _ws);
+      g.restore();
+      /* ★ 앞손 : 인게임과 똑같이 '봉을 쥔 손' AI 그림을 무기 위에 얹는다. */
+      drawHandOver(g, hx2, hy2, sz, (_wg.nat!==undefined? _wg.nat : 0) + _wg.rot,
+                   ox-sz*0.5, oy-sz*BASE_F);
+    }
   }
 
   /* 그려진 영역을 재서 출력 캔버스에 통째로 맞춘다 */
@@ -18235,6 +18253,38 @@ function villageLieDown(wrap){
   wrap.__resting=true;
   var mh=maxHp(), healed=(HP<mh);
   if(healed){ HP=mh; needSync=1; syncHUD(); }
+
+  /* ★ 2026-09-01 3차 수정 — 사용자 제보 두 가지: ① "저게 침대에 눕는거냐?" —
+     통째로 90도 돌린 자세는 정면 얼굴이 그대로 옆으로 돌아가버려 실제 사람이
+     눕는 모양이 아니었다. ② "누워서 쉴 때는 무기가 없어야지" — 자면서 검을
+     들고 있으면 안 된다는 지적도 맞다. RPG Maker 개발자 포럼 사례를 찾아보니,
+     전용 '눕는' 그림이 없을 때 흔히 쓰는 절충은 몸 전체를 억지로 눕히지 않고
+     단순화하는 것이었다 — 그래서 몸통을 억지로 돌리는 대신: (a) 무기 없는
+     인형을 새로 그리고(heroDollCanvas(true) — 이미 있는 함수에 매개변수만
+     추가) (b) 회전 없이 어깨 아래를 잘라내(clip-path) 베개 위에 "이불 밖으로
+     얼굴만 나온" 것처럼 배치한다. 몸통은 그림 속 이불이 덮은 것으로 처리한다
+     (새 그림 없이 기존 침대 그림 재사용, 절대규칙 준수). */
+  var doll=wrap.querySelector('.doll-img:not([data-sleepdoll])');
+  if(doll) doll.style.display='none';  /* 무기 든 원래 인형은 숨긴다(삭제 안 함) — 일어나면 그대로 복원 */
+  try{
+    var sleepDoll=heroDollCanvas(true);
+    sleepDoll.setAttribute('data-sleepdoll','1');
+    var R=roomState(), bx=19, by=39;   /* main방 AI배경 속 베개 위치 실측(스크린샷 기준) */
+    if(R.cur!=='main'){
+      /* 다른 방은 배경이 아니라 침대 이모지 소품 좌표(top 기준)를 쓴다 —
+         renderDecorPlaced()의 pos.y는 top%이므로 bottom%로 환산한다. */
+      var DfbLie=decorState(), bpLie=DfbLie.pos[DfbLie.use.bed];
+      if(bpLie && bpLie.room===R.cur){ bx=Math.round(bpLie.x*100); by=Math.max(10,Math.round(100-bpLie.y*100)-2); }
+    }
+    sleepDoll.style.cssText='position:absolute;left:'+bx+'%;bottom:'+by+'%;'+
+      'width:min(26vw,132px);height:min(26vw,132px);transform:translateX(-50%);'+
+      'clip-path:inset(4% 6% 46% 6% round 10px);'+
+      'filter:drop-shadow(0 3px 4px rgba(0,0,0,.4));pointer-events:none;z-index:3;'+
+      'opacity:0;transition:opacity .4s';
+    wrap.appendChild(sleepDoll);
+    requestAnimationFrame(function(){ sleepDoll.style.opacity='1'; });
+  }catch(e){}
+
   var ov=el('div'); ov.setAttribute('data-sleepov','1');
   ov.style.cssText='position:absolute;inset:0;background:rgba(10,8,20,.55);display:flex;'+
     'align-items:center;justify-content:center;font-size:54px;z-index:50;opacity:0;'+
@@ -18254,6 +18304,10 @@ function villageLieDown(wrap){
 }
 function villageWakeUp(wrap){
   wrap.__resting=false;
+  var sleepDoll=wrap.querySelector('[data-sleepdoll]');
+  if(sleepDoll && sleepDoll.parentNode) sleepDoll.parentNode.removeChild(sleepDoll);
+  var doll=wrap.querySelector('.doll-img:not([data-sleepdoll])');
+  if(doll) doll.style.display='';   /* 무기 든 원래 인형을 다시 보여준다 */
   var ov=wrap.querySelector('[data-sleepov]');
   if(ov){ ov.style.animation='none'; ov.style.opacity='0';
     setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); },320); }
@@ -20307,7 +20361,8 @@ function renderVillage(){
       '<div style="position:absolute;bottom:0;width:100%;height:78%;border-radius:14px 14px 0 0;'+
         'background:linear-gradient(180deg,#9A9184,#736A5C);border:4px solid var(--ink)"></div>'+
       '<div style="position:absolute;bottom:10%;left:14%;width:72%;height:52%;border-radius:8px;background:#1C110D"></div>'+
-      '<div style="position:absolute;bottom:13%;left:28%;font-size:min(9vw,44px);filter:drop-shadow(0 0 16px #FF8A2A)">🔥</div>'+
+      '<div style="position:absolute;bottom:13%;left:28%;font-size:min(9vw,44px);filter:drop-shadow(0 0 16px #FF8A2A);'+
+        'animation:fireFlicker 1.7s ease-in-out infinite;transform-origin:50% 85%">🔥</div>'+
     '</div>'+
     /* 침대 - 왼쪽 */
     '<div style="position:absolute;left:6%;bottom:22%;width:30vw;max-width:190px;height:20vh;max-height:110px">'+
@@ -20323,6 +20378,21 @@ function renderVillage(){
     '<div style="position:absolute;left:0;right:0;top:0;height:70px;background:linear-gradient(180deg,rgba(0,0,0,.45),transparent);pointer-events:none"></div>'
   ));
   sheetBody.appendChild(wrap);
+
+  /* ★ 2026-09-01 신규 — 사용자 요청 "벽난로에 불이 좀 타오르는 애니메이션처럼
+     불가능한가?": main방은 벽난로가 AI 배경 그림 속에 이미 정지 그림으로
+     그려져 있어(새로 그릴 수 없음, 절대규칙) 그 위에 은은한 빛 오버레이를
+     겹쳐 흔들리게 한다 — 그림 자체는 그대로 두고 "불빛이 일렁이는 효과"만
+     더하는 방식(실측한 불꽃 위치에 겹침, 벽난로 탭 히트존과는 별개 레이어). */
+  if(R.cur==='main' && bgArt){
+    var fireGlow=el('div');
+    fireGlow.style.cssText='position:absolute;left:82%;bottom:39%;width:11vw;height:11vw;'+
+      'max-width:56px;max-height:56px;transform:translate(-50%,50%);border-radius:50%;'+
+      'background:radial-gradient(circle,rgba(255,178,74,.85) 0%,rgba(255,120,20,.5) 45%,rgba(255,80,10,0) 75%);'+
+      'mix-blend-mode:screen;pointer-events:none;z-index:2;'+
+      'animation:fireGlowPulse 1.7s ease-in-out infinite';
+    wrap.appendChild(fireGlow);
+  }
 
   /* 상단 : 장소 이름표 + 닫기(헤더바를 꺼서 직접 그린다) */
   var hdr=el('div');
