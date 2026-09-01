@@ -39,6 +39,11 @@ const {chromium}=require('playwright');
       T.EN.length=0; T.P.atkT=0; T.P.moving=false;   // 자동전투 재발 방지(매 무기마다)
       await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));  // idle 상태로 렌더된 프레임까지 대기
       await new Promise(r=>setTimeout(r,10));
+      // ★ 2026-09-01 발견 : 위 rAF×2 + setTimeout 대기만으로는 HERO_POSE_PK가 갱신 전에
+      //   읽히는 레이스가 실제로 났다(장병기 6종이 전부 pose:''로 읽혀 자세 그림 없는
+      //   폴백 수식으로 잘못 측정됨 — 실측: 창 34.5%→０%, 미늘창 46.2%→4.5%처럼
+      //   차이가 크다). T.render()를 명시적으로 한 번 호출하면 확정적으로 갱신된다.
+      T.render();
       // ★ 2026-08-30 자세 그림 배선 이후 : 계열에 따라 손 잡는점(F)이 계열마다
       //   완전히 달라질 수 있다(장병기는 팔이 몸 밖으로 뻗음) — 예전엔 루프 밖에서
       //   한 번만 재던 걸 계열이 바뀔 때마다(무기를 갈아 낄 때마다) 다시 잰다.

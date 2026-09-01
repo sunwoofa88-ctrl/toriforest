@@ -13582,6 +13582,33 @@ function wepTypeHold(id){
    임시방편이다 — 근본 해결은 이 세 벌의 손 위치를 낮게 다시 그리는 것이고,
    그러면 이 보정표는 지워도 된다. */
 var ARM_REACH_ADJ = {dark:0.42, royal:0.42, scale:0.42};
+/* ══ 무기별 회전·크기 미세보정 (2026-09-01) ══════════════════════════════════
+   사용자 지적("무기 방향과 그립 손의 축이 일치해야") 그대로 — 계열 8개(WEP_RULE)에
+   전부 같은 회전각만 적용해 오다 보니, 아이콘 모양이 계열 평균과 다른 무기(부채·
+   요요·방울·지팡이류·우산 등)는 자루축이 손의 쥐는 방향과 안 맞아 무기가 몸통을
+   가로질렀다(t_audit3.js 실측: 48종 중 23종이 몸통 26% 이상 겹침 또는 얼굴 겹침).
+   장병기(pole)류는 이미 전용 자세 그림이 있어 제외 — 그 6종만 별도로 렌더 후
+   pose 경로가 실제로 타는지 T.render()를 먼저 호출해 재확인해야 한다(안 그러면
+   HERO_POSE_PK 갱신 전에 읽어 폴백 수식으로 잘못 측정된다 — 레이스 컨디션 기존에
+   문서화됨). 아래 값은 추측이 아니라 실측 스윕(da 13단·ds 10단 그리드, 아트키마다
+   렌더 → 몸 실루엣과 픽셀 겹침 계산 → 원래 값에서 가장 적게 벗어나면서 몸통<24%·
+   얼굴<2.5%·잘림 없음을 만족하는 조합 선택)으로 구했다. da=추가 회전(라디안),
+   ds=계열 크기배수에 곱하는 추가 배수. 보정 후 전부 통과(요요만 손접촉이 낮게
+   남음 — 아이콘 자체가 원반+끈 모양이라 쥐는점 주변에 채워진 픽셀이 원래 적다,
+   회전만으로 해결 불가·다음 세션이 아이콘을 다시 그리거나 감사 기준을 조정할 것). */
+var WEP_FIX={
+  eq_sword_wood:{da: 0.09, ds:1.00}, eq_axe:{da:-0.17, ds:1.00},
+  eq_staff:{da:-0.45, ds:0.68}, eq_claw:{da: 0.17, ds:1.10},
+  eq_wand:{da: 0.09, ds:1.10}, eq_tome:{da: 0.00, ds:1.22},
+  eq_orb:{da: 0.00, ds:1.10}, eq_rune:{da:-0.17, ds:1.00},
+  eq_bell:{da:-0.26, ds:1.22}, eq_fan:{da: 0.00, ds:1.10},
+  eq_whip:{da:-0.09, ds:1.22}, eq_twin:{da: 0.17, ds:1.00},
+  eq_xbow:{da:-0.09, ds:0.80}, eq_sling:{da:-0.26, ds:1.00},
+  eq_yoyo:{da:-0.45, ds:1.50}, eq_topspin:{da:-0.26, ds:1.00},
+  eq_umbrella:{da:-0.55, ds:0.80}, eq_fishrod:{da:-0.09, ds:0.88},
+  eq_warfan:{da:-0.26, ds:1.00}, eq_cball:{da:-0.35, ds:1.00},
+  eq_drum:{da:-0.09, ds:1.00}, eq_starst:{da:-0.35, ds:0.68}
+};
 function wepGrip(id){
   var E=EQUIP[id], k=E? eqArtKey(E) : null;
   var T=E? WEP_TYPE[E.tn] : null;
@@ -13596,8 +13623,18 @@ function wepGrip(id){
   if(A){
     /* 붙이는 일은 두 좌표계를 겹치는 것뿐이다 :
          그림이 알려 준 자루 방향(A.ang)  →  자세가 요구하는 방향(POSE_ANG + 계열 기울기) */
-    var tgt = (poseAng!==null)? poseAng : (POSE_ANG + R[0]);
-    return { x:A.gx, y:A.gy, rot:(tgt - A.ang), s:R[1]*armMul, hy:R[2], nat:A.ang };
+    var fix = (poseAng===null)? WEP_FIX[k] : null;
+    /* ⚠ 갑옷을 입으면(drawHandOver) 무기 위에 '이미 그려진 주먹'을 사각형으로 오려
+       덮어씌운다(정지 클리핑, 회전 없음) — 그 사각형이 무기보다 크면 무기가 통째로
+       가려진다. 실측(왕관갑옷+지팡이)으로 실제 발생 확인: ds<1(축소)을 갑옷 상태에도
+       그대로 곱하면 이미 ARM_REACH_ADJ로 한 번 줄어든 크기가 더 줄어 사각형 안에
+       완전히 숨어버렸다. 그래서 '축소' 보정은 맨몸에서만 적용하고 갑옷 상태는 원래
+       크기(R[1]*armMul)를 유지한다 — 회전(da)과 '확대'(ds>=1)는 가려지는 방향이
+       아니라 갑옷에도 그대로 적용해도 안전하다(실측: 방울·요요 갑옷 상태 정상 표시). */
+    var armored = !!heroArmorCls();
+    var fixDs = fix? ((armored && fix.ds<1)? 1 : fix.ds) : 1;
+    var tgt = (poseAng!==null)? poseAng : (POSE_ANG + R[0] + (fix?fix.da:0));
+    return { x:A.gx, y:A.gy, rot:(tgt - A.ang), s:R[1]*armMul*fixDs, hy:R[2], nat:A.ang };
   }
   /* 그림이 없는 절차적 무기 — 예전 경로 */
   if(!k || !W_GRIP[k]) return { x:0.50, y:0.95, rot:(W_HOLD + 1.5708), s:0.68*armMul, nat:0 };
