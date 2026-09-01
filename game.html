@@ -544,6 +544,16 @@ body.sheeting #toasts{top:auto;bottom:14px}
 .sheet.sheetVillage .sheet-in{max-width:none;width:100%;height:100%;max-height:100%;border-radius:0;border:0;animation:none}
 .sheet.sheetVillage .sheet-hd,.sheet.sheetVillage .sheet-foot,.sheet.sheetVillage .tabs{display:none}
 .sheet.sheetVillage .sheet-bd{padding:0;overflow:hidden;height:100%}
+/* ★ 2026-09-01 — 사용자 제보 "쉼터에서 꾸미기 누르면 던전으로 가버리노??":
+   실제 이동은 아니다 — 쉼터는 게임 캔버스 위에 덮은 전용 화면(sheetVillage)일
+   뿐이고, 그 안에서 꾸미기 등 하위 시트를 열면(openSheet, kind!=='village')
+   이 덮개가 벗겨지며 뒤에서 계속 진행 중이던 실제 게임 화면(예: 별빛의 탑
+   진행 중이던 던전)이 기본 .sheet 반투명(50%) 배경 사이로 그대로 비쳐서
+   "던전으로 순간이동한 것처럼" 보였다. 실제 게임 상태는 안 바뀌었으므로
+   순수 시각 버그. 고침: 쉼터에서 연 하위 시트에만 이 클래스를 추가로 얹어
+   배경을 훨씬 불투명하게 만든다(쉼터 색감과 맞춘 톤) — 헤더·탭 표시 여부는
+   기존 sheetVillage 규칙과 완전히 분리된 별도 클래스라 다른 화면엔 영향 없음. */
+.sheet.sheetOverVillage{background:rgba(32,22,15,.96)}
 /* 가로 화면 : 세로 공간이 좁으니 머리·탭·여백을 줄여 내용이 더 보이게 */
 @media (max-height:520px){
   .sheet-hd{padding:6px 10px!important}
@@ -18216,9 +18226,11 @@ function openSheet(kind,tab){
      안 놓으면 조이스틱이 눌린 채로 남고, 공격 반복 타이머가 메뉴 뒤에서 계속 돈다. */
   try{ releaseAllInput(); }catch(e){}
   try{ ATK_STOP(); }catch(e){}
+  var wasVillage=(curSheet==='village');   /* 쉼터 안에서 하위 시트로 넘어가는 전환인지 */
   curSheet=kind; curTab=tab||0;
   sheetOpenedAt=nowMs();
   sheetEl.classList.toggle('sheetVillage', kind==='village');
+  sheetEl.classList.toggle('sheetOverVillage', wasVillage && kind!=='village');
   sheetEl.classList.add('on'); document.body.classList.add('sheeting');
   repositionToasts();
   sheetOpen=true; stopLoop(); saveGame();
